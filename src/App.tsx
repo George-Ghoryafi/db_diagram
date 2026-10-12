@@ -96,8 +96,9 @@ type Doc = {
   dbml: string;
   revision: string;
   layout: Record<string, { x: number; y: number }>;
-  storage?: "browser";
+  storage?: "browser" | "cloud";
 };
+const accessKey = localStorage.getItem("dbdiagram.access-key") || "";
 let browserMode = false;
 async function api(
   path: string,
@@ -108,13 +109,17 @@ async function api(
     return (await import("./browser-api")).browserApi(path, body, method);
   const r = await fetch("/api" + path, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(accessKey ? { Authorization: "Bearer " + accessKey } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (
     path === "/schemas" &&
     method === "GET" &&
-    (r.status === 404 ||
+    ((r.status === 401 && !accessKey) ||
+      r.status === 404 ||
       (r.ok && r.headers.get("content-type")?.includes("text/html")))
   ) {
     browserMode = true;
@@ -339,6 +344,28 @@ function Workspace() {
     [canvasSearch, setCanvasSearch] = useState(""),
     [noteText, setNoteText] = useState(""),
     [editingNote, setEditingNote] = useState("");
+  const [cloudAvailable, setCloudAvailable] = useState(false);
+  const [workspaceKey, setWorkspaceKey] = useState(accessKey);
+  useEffect(() => {
+    void fetch("/api/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) =>
+        setCloudAvailable(data?.storage === "cloud" && data.configured),
+      )
+      .catch(() => {});
+  }, []);
+  const connectWorkspace = async () => {
+    try {
+      const response = await fetch("/api/schemas", {
+        headers: { Authorization: "Bearer " + workspaceKey },
+      });
+      if (!response.ok) throw new Error("This workspace key was not accepted.");
+      localStorage.setItem("dbdiagram.access-key", workspaceKey);
+      location.reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
   const viewport = useViewport();
@@ -436,7 +463,11 @@ function Workspace() {
       setDoc(d);
       setCode(d.dbml);
       setStatus(
-        d.storage === "browser" ? "Saved in this browser" : "Saved locally",
+        d.storage === "cloud"
+          ? "Saved to shared workspace"
+          : d.storage === "browser"
+            ? "Saved in this browser"
+            : "Saved locally",
       );
       setError("");
       setSelected("");
@@ -551,9 +582,11 @@ function Workspace() {
       setStatus(
         dirty.current
           ? "Unsaved changes"
-          : d.storage === "browser"
-            ? "Saved in this browser"
-            : "Saved locally",
+          : d.storage === "cloud"
+            ? "Saved to shared workspace"
+            : d.storage === "browser"
+              ? "Saved in this browser"
+              : "Saved locally",
       );
       setError("");
       await refresh();
@@ -589,9 +622,11 @@ function Workspace() {
         if (d.revision !== doc.revision) {
           if (dirty.current) {
             setError(
-              doc.storage === "browser"
-                ? "Schema changed in another tab. Export your edits, then Revert to load it."
-                : "Schema changed on disk. Export your edits, then Revert to load the agent version.",
+              doc.storage === "cloud"
+                ? "Schema changed in the shared workspace. Export your edits, then Revert to load it."
+                : doc.storage === "browser"
+                  ? "Schema changed in another tab. Export your edits, then Revert to load it."
+                  : "Schema changed on disk. Export your edits, then Revert to load the agent version.",
             );
           } else {
             saved.current = d.dbml;
@@ -602,9 +637,11 @@ function Workspace() {
             setDoc(d);
             setCode(d.dbml);
             setStatus(
-              d.storage === "browser"
-                ? "Updated from browser storage"
-                : "Updated from disk",
+              d.storage === "cloud"
+                ? "Updated from shared storage"
+                : d.storage === "browser"
+                  ? "Updated from browser storage"
+                  : "Updated from disk",
             );
           }
         }
@@ -1446,7 +1483,11 @@ function Workspace() {
         <span>
           <Database size={12} /> PostgreSQL{" "}
           <span className="footer-divider">|</span>{" "}
-          {doc?.storage === "browser" ? "Browser workspace" : "Local workspace"}
+          {doc?.storage === "cloud"
+            ? "Shared workspace"
+            : doc?.storage === "browser"
+              ? "Browser workspace"
+              : "Local workspace"}
         </span>
       </footer>
       {modal && (
@@ -1636,6 +1677,79 @@ function Workspace() {
                 <button className="primary" onClick={addNote}>
                   {editingNote ? "Update note" : "Add note"}
                 </button>
+              </>
+            ) : modal === "agent" && cloudAvailable ? (
+              <>
+                <p>
+                  Connect to your team's shared Neon workspace. Browser-only
+                  diagrams stay on this device.
+                </p>
+                <label>
+                  Workspace access key
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={workspaceKey}
+                    onChange={(e) => setWorkspaceKey(e.target.value)}
+                    placeholder="Enter your team's access key"
+                  />
+                </label>
+                {error && <p className="error">{error}</p>}
+                <button
+                  className="primary"
+                  onClick={() => void connectWorkspace()}
+                >
+                  Connect shared workspace
+                </button>
+                {doc?.storage === "cloud" && (
+                  <>
+                    <h3>Remote MCP</h3>
+                    <code className="path">{location.origin + "/api/mcp"}</code>
+                    <p>
+                      Use this MCP configuration in Claude Code or an MCP
+                      client. It includes your workspace key, which allows
+                      reading and editing every shared diagram.
+                    </p>
+                    <button
+                      className="primary"
+                      onClick={() =>
+                        download(
+                          "dbdiagram.mcp.json",
+                          JSON.stringify(
+                            {
+                              mcpServers: {
+                                dbdiagram: {
+                                  type: "http",
+                                  url: location.origin + "/api/mcp",
+                                  headers: {
+                                    Authorization: "Bearer " + accessKey,
+                                  },
+                                },
+                              },
+                            },
+                            null,
+                            2,
+                          ),
+                        )
+                      }
+                    >
+                      Download MCP config
+                    </button>
+                    <p>
+                      Codex: add a Streamable HTTP MCP server with this URL and
+                      an Authorization header containing Bearer followed by the
+                      access key.
+                    </p>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem("dbdiagram.access-key");
+                        location.reload();
+                      }}
+                    >
+                      Switch to browser-only diagrams
+                    </button>
+                  </>
+                )}
               </>
             ) : modal === "agent" && doc?.storage === "browser" ? (
               <>

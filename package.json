@@ -19,6 +19,7 @@
     "@dbml/core": "latest",
     "@lezer/highlight": "^1.2.5",
     "@modelcontextprotocol/sdk": "latest",
+    "@neondatabase/serverless": "1.2.0",
     "@uiw/react-codemirror": "latest",
     "@xyflow/react": "latest",
     "express": "latest",

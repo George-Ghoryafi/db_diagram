@@ -85,3 +85,13 @@ Sources: [Workers pricing](https://developers.cloudflare.com/workers/platform/pr
 Fresh workspaces start with **Team workspace · example**: five tables, six named relationships, colored groups, an enum, a composite primary key, an index, defaults and an editable sticky note. Its DBML and curated coordinates live in `src/example.ts`. `npm run build` validates the DBML and generates the lightweight initial diagram model before building the frontend. Existing stored schemas are retained.
 
 A static deployment with no `/api/schemas` endpoint uses browser storage. The example renders immediately; the official parser loads separately for editing/export. Saves, new diagrams and layouts stay in this browser, labeled **BROWSER**; they are not shared with teammates. Export DBML to keep an independent copy. Clearing site data removes browser saves. Server/API mode continues using the existing filesystem and MCP workflow. The browser's Agent access dialog offers a DBML download rather than implying a remote MCP connection exists.
+
+## Hosted Neon workspace and remote MCP
+
+Vercel serves the authenticated API and MCP at `/api/mcp`; the Neon integration supplies `DATABASE_URL` (this project uses its `db_diagram_DATABASE_URL` prefix, which is also supported). Run each statement in `server/neon-setup.sql` separately in the integration's Query editor, then set a random `DIAGRAM_ACCESS_KEY` (at least 32 characters) in Vercel's Production environment. Redeploy after setting it. Keep both variables server-only.
+
+Open **Agent access**, enter that access key, and **Connect shared workspace**. Existing browser-only diagrams remain in browser storage; export/import them explicitly when moving them to shared storage. Connected schemas and layouts are saved in Neon. A shared access key grants access to all shared diagrams; distribute it only to your team, and rotate it in Vercel if exposed. This is one shared workspace, without individual accounts or roles.
+
+**Download MCP config** produces a Streamable HTTP configuration for Claude Code or an MCP client. Codex supports the same endpoint using a URL and an Authorization header. MCP offers `list_schemas`, `read_schema`, `write_schema`, `validate_schema`, and `export_schema`. Updates must use the latest revision; accepted writes retain their DBML in `diagram_versions`. No schema data is accessible without the key, including through REST or MCP.
+
+The local filesystem backend and local stdio MCP continue to work independently. Hosted MCP operates on Neon, not local files.
