@@ -1207,7 +1207,10 @@ function Workspace() {
               </span>
             </div>
             <span className="private">
-              <span className="dot" /> Only on this device
+              <span className="dot" />{" "}
+              {doc?.storage === "cloud"
+                ? "Shared workspace"
+                : "Only on this device"}
             </span>
           </div>
           <ReactFlow
