@@ -12,7 +12,7 @@ import { createApp } from '../server/index.js';
 const schema = 'Table users {\n id integer [pk]\n email varchar(255) [unique, not null]\n indexes { (id, email) [unique, name: \'identity\'] }\n}';
 test('Official DBML v2 parser preserves indexes, groups, references and namespaced tables', () => {
   const model = parseSchema(example);
-  assert.equal(model.tables.length, 7); assert.equal(model.refs.length, 6); assert.equal(model.groups.length, 2);
+  assert.equal(model.tables.length, 5); assert.equal(model.refs.length, 6); assert.equal(model.groups.length, 2);
   const users = parseSchema(schema).tables[0];
   assert.equal(users.fields[1].type, 'varchar(255)'); assert.equal(users.indexes[0].name, 'identity'); assert.equal(users.indexes[0].columns.length, 2);
   const namespaced = parseSchema('Table auth.users {\n id int [pk]\n}\nTable things {\n user_id int [ref: > auth.users.id]\n}');

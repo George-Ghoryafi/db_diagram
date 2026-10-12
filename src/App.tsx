@@ -9,6 +9,7 @@ import {
   useNodesState,
   useReactFlow,
   useViewport,
+  useNodesInitialized,
   useUpdateNodeInternals,
   BaseEdge,
   EdgeLabelRenderer,
@@ -51,6 +52,8 @@ import {
 import { addIndex, replaceNote } from "./dbml-edit";
 import { visibleFields, matchesSearch, type Detail } from "./canvas";
 import { arrangeTables, type Arrangement } from "./layout";
+import { exampleDocument } from "./example";
+import exampleModel from "./example-model.json";
 
 type Field = {
   name: string;
@@ -90,17 +93,34 @@ type Doc = {
   dbml: string;
   revision: string;
   layout: Record<string, { x: number; y: number }>;
+  storage?: "browser";
 };
+let browserMode = false;
 async function api(
   path: string,
   body?: unknown,
   method = body ? "POST" : "GET",
 ) {
+  if (browserMode)
+    return (await import("./browser-api")).browserApi(path, body, method);
   const r = await fetch("/api" + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (
+    path === "/schemas" &&
+    method === "GET" &&
+    (r.status === 404 ||
+      (r.ok && r.headers.get("content-type")?.includes("text/html")))
+  ) {
+    browserMode = true;
+    return (await import("./browser-api")).browserApi(path, body, method);
+  }
+  if (!r.headers.get("content-type")?.includes("application/json"))
+    throw new Error(
+      "The schema API is unavailable. Export your edits as DBML.",
+    );
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || data.message || "Request failed");
   return data;
@@ -263,17 +283,30 @@ function RelationshipEdge(props: EdgeProps) {
   );
 }
 const edgeTypes = { relationship: RelationshipEdge };
+const exampleNodes: Node[] = [
+  ...exampleModel.tables.map((table) => ({
+    id: table.id,
+    type: "table",
+    initialWidth:235,initialHeight:33+table.fields.length*27+(table.indexes.length?25:0),
+    position: exampleDocument.layout[table.id],
+    data: { table },
+    zIndex: 1,
+  })),
+  ...exampleModel.notes.map((note) => ({
+    id: note.id,
+    type: "note",
+    initialWidth:240,initialHeight:210,
+    position: exampleDocument.layout[note.id],
+    data: { note },
+    zIndex: 1,
+  })),
+];
 function Workspace() {
-  const [docs, setDocs] = useState<Doc[]>([]),
-    [doc, setDoc] = useState<Doc | null>(null),
-    [code, setCode] = useState(""),
-    [model, setModel] = useState<Model>({
-      notes: [],
-      tables: [],
-      refs: [],
-      groups: [],
-    });
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]),
+  const [docs, setDocs] = useState<Doc[]>([exampleDocument]),
+    [doc, setDoc] = useState<Doc | null>(exampleDocument),
+    [code, setCode] = useState(exampleDocument.dbml),
+    [model, setModel] = useState<Model>(exampleModel);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(exampleNodes),
     [error, setError] = useState(""),
     [status, setStatus] = useState("Loading…"),
     [tab, setTab] = useState("DBML"),
@@ -297,8 +330,9 @@ function Workspace() {
     [noteText, setNoteText] = useState(""),
     [editingNote, setEditingNote] = useState("");
   const viewport = useViewport();
-  const saved = useRef(""),
-    latestCode = useRef(""),
+  const nodesInitialized=useNodesInitialized();
+  const saved = useRef(exampleDocument.dbml),
+    latestCode = useRef(exampleDocument.dbml),
     saving = useRef(false),
     dirty = useRef(false),
     parseSeq = useRef(0),
@@ -336,6 +370,7 @@ function Workspace() {
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [modal]);
+  useEffect(()=>{if(nodesInitialized&&fitPending.current){fitPending.current=false;flow.fitView({padding:0.12,maxZoom:1});}},[nodesInitialized,doc?.id,doc?.revision]);
   const refresh = () => api("/schemas").then(setDocs);
   const load = async (id: string) => {
     if (dirty.current) {
@@ -347,11 +382,15 @@ function Workspace() {
       saved.current = d.dbml;
       latestCode.current = d.dbml;
       fitPending.current = true;
-      setModel({ notes: [], tables: [], refs: [], groups: [] });
-      setNodes([]);
+      if (doc?.id !== d.id) {
+        setModel({ notes: [], tables: [], refs: [], groups: [] });
+        setNodes([]);
+      }
       setDoc(d);
       setCode(d.dbml);
-      setStatus("Saved locally");
+      setStatus(
+        d.storage === "browser" ? "Saved in this browser" : "Saved locally",
+      );
       setError("");
       setSelected("");
       setSelectedEdge("");
@@ -364,6 +403,14 @@ function Workspace() {
       .then(async (ds) => {
         setDocs(ds);
         if (ds.length) await load(ds[0].id);
+        else {
+          const d = await api("/schemas", {
+            name: "welcome",
+            dbml: exampleDocument.dbml,
+          });
+          await refresh();
+          await load(d.id);
+        }
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -428,22 +475,18 @@ function Workspace() {
                 })),
               );
           });
-          if (fitPending.current) {
-            fitPending.current = false;
-            setTimeout(() => flow.fitView({ padding: 0.12, maxZoom: 1 }), 100);
-          }
         })
         .catch((e) => {
           if (seq === parseSeq.current) setError(e.message);
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [code, doc?.id]);
+  }, [code, doc?.id, doc?.revision]);
   const change = useCallback((value: string) => {
     latestCode.current = value;
     setCode(value);
     dirty.current = value !== saved.current;
-    setStatus(dirty.current ? "Unsaved changes" : "Saved locally");
+    setStatus(dirty.current ? "Unsaved changes" : "Saved");
   }, []);
   const save = async () => {
     if (!doc || saving.current) return;
@@ -457,7 +500,13 @@ function Workspace() {
       saved.current = code;
       dirty.current = latestCode.current !== code;
       setDoc(d);
-      setStatus(dirty.current ? "Unsaved changes" : "Saved locally");
+      setStatus(
+        dirty.current
+          ? "Unsaved changes"
+          : d.storage === "browser"
+            ? "Saved in this browser"
+            : "Saved locally",
+      );
       setError("");
       await refresh();
     } catch (e) {
@@ -492,7 +541,7 @@ function Workspace() {
         if (d.revision !== doc.revision) {
           if (dirty.current) {
             setError(
-              "Schema changed on disk. Export your edits, then Revert to load the agent version.",
+              doc.storage==='browser'?"Schema changed in another tab. Export your edits, then Revert to load it.":"Schema changed on disk. Export your edits, then Revert to load the agent version.",
             );
           } else {
             saved.current = d.dbml;
@@ -502,7 +551,11 @@ function Workspace() {
             setNodes([]);
             setDoc(d);
             setCode(d.dbml);
-            setStatus("Updated from disk");
+            setStatus(
+              d.storage === "browser"
+                ? "Updated from browser storage"
+                : "Updated from disk",
+            );
           }
         }
       } catch (e) {
@@ -808,7 +861,10 @@ function Workspace() {
           <span className="logo">
             <Database size={18} />
           </span>
-          dbdiagram <span className="local">LOCAL</span>
+          dbdiagram{" "}
+          <span className="local">
+            {doc?.storage === "browser" ? "BROWSER" : "LOCAL"}
+          </span>
         </div>
         <span className="slash">/</span>
         <select
@@ -1129,6 +1185,7 @@ function Workspace() {
             snapGrid={[20, 20]}
             onNodeDragStop={persistLayout}
             fitView
+            fitViewOptions={{padding:0.12,maxZoom:1}}
             minZoom={0.15}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
@@ -1325,7 +1382,7 @@ function Workspace() {
         </span>
         <span>
           <Database size={12} /> PostgreSQL{" "}
-          <span className="footer-divider">|</span> Local workspace
+          <span className="footer-divider">|</span> {doc?.storage==='browser'?'Browser workspace':'Local workspace'}
         </span>
       </footer>
       {modal && (
@@ -1514,6 +1571,25 @@ function Workspace() {
                 <button className="primary" onClick={addNote}>
                   {editingNote ? "Update note" : "Add note"}
                 </button>
+              </>
+            ) : modal === "agent" && doc?.storage === "browser" ? (
+              <>
+                <p>
+                  This deployment stores schemas in this browser. Download the
+                  DBML file for Codex or Claude Code to edit, then import it
+                  back here.
+                </p>
+                <button
+                  className="primary"
+                  onClick={() => download((doc.id || "schema") + ".dbml", code)}
+                >
+                  <Download size={15} />
+                  Download DBML for your agent
+                </button>
+                <p>
+                  Shared storage and a remote MCP connection are not configured
+                  on this deployment.
+                </p>
               </>
             ) : modal === "agent" ? (
               <>

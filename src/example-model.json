@@ -1,0 +1,345 @@
+{
+  "notes": [
+    {
+      "id": "note:Explore",
+      "name": "Explore",
+      "content": "Click an edge to highlight its fields.\nTry Keys only, snap to grid, and the layout menu.\nThis note is editable: double-click it."
+    }
+  ],
+  "tables": [
+    {
+      "id": "public.users",
+      "name": "users",
+      "schema": "public",
+      "note": "",
+      "color": "#326d94",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "pk": true,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "email",
+          "type": "varchar(255)",
+          "pk": false,
+          "unique": true,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "pk": false,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "id": "public.workspaces",
+      "name": "workspaces",
+      "schema": "public",
+      "note": "",
+      "color": "#326d94",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "pk": true,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(100)",
+          "pk": false,
+          "unique": true,
+          "not_null": true,
+          "note": ""
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "id": "public.memberships",
+      "name": "memberships",
+      "schema": "public",
+      "note": "",
+      "color": "#326d94",
+      "fields": [
+        {
+          "name": "workspace_id",
+          "type": "integer",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "user_id",
+          "type": "integer",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "role",
+          "type": "varchar(20)",
+          "pk": false,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "membership_pk",
+          "pk": true,
+          "note": null,
+          "columns": [
+            {
+              "type": "column",
+              "value": "workspace_id"
+            },
+            {
+              "type": "column",
+              "value": "user_id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "public.projects",
+      "name": "projects",
+      "schema": "public",
+      "note": "",
+      "color": "#3c877c",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "pk": true,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        },
+        {
+          "name": "workspace_id",
+          "type": "integer",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "owner_id",
+          "type": "integer",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(150)",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "id": "public.tasks",
+      "name": "tasks",
+      "schema": "public",
+      "note": "",
+      "color": "#3c877c",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "pk": true,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        },
+        {
+          "name": "project_id",
+          "type": "integer",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        },
+        {
+          "name": "assignee_id",
+          "type": "integer",
+          "pk": false,
+          "unique": false,
+          "not_null": false,
+          "note": ""
+        },
+        {
+          "name": "title",
+          "type": "varchar(255)",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": "A short, actionable task title."
+        },
+        {
+          "name": "status",
+          "type": "task_status",
+          "pk": false,
+          "unique": false,
+          "not_null": true,
+          "note": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "tasks_by_project_status",
+          "note": null,
+          "columns": [
+            {
+              "type": "column",
+              "value": "project_id"
+            },
+            {
+              "type": "column",
+              "value": "status"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "refs": [
+    {
+      "id": "public.ref0",
+      "name": "workspace_members",
+      "fromTable": "public.workspaces",
+      "fromFields": [
+        "id"
+      ],
+      "toTable": "public.memberships",
+      "toFields": [
+        "workspace_id"
+      ],
+      "relation": "1:*"
+    },
+    {
+      "id": "public.ref1",
+      "name": "user_memberships",
+      "fromTable": "public.users",
+      "fromFields": [
+        "id"
+      ],
+      "toTable": "public.memberships",
+      "toFields": [
+        "user_id"
+      ],
+      "relation": "1:*"
+    },
+    {
+      "id": "public.ref2",
+      "name": "workspace_projects",
+      "fromTable": "public.workspaces",
+      "fromFields": [
+        "id"
+      ],
+      "toTable": "public.projects",
+      "toFields": [
+        "workspace_id"
+      ],
+      "relation": "1:*"
+    },
+    {
+      "id": "public.ref3",
+      "name": "project_owner",
+      "fromTable": "public.users",
+      "fromFields": [
+        "id"
+      ],
+      "toTable": "public.projects",
+      "toFields": [
+        "owner_id"
+      ],
+      "relation": "1:*"
+    },
+    {
+      "id": "public.ref4",
+      "name": "project_tasks",
+      "fromTable": "public.projects",
+      "fromFields": [
+        "id"
+      ],
+      "toTable": "public.tasks",
+      "toFields": [
+        "project_id"
+      ],
+      "relation": "1:*"
+    },
+    {
+      "id": "public.ref5",
+      "name": "task_assignee",
+      "fromTable": "public.users",
+      "fromFields": [
+        "id"
+      ],
+      "toTable": "public.tasks",
+      "toFields": [
+        "assignee_id"
+      ],
+      "relation": "1:*"
+    }
+  ],
+  "groups": [
+    {
+      "name": "Identity",
+      "color": "#a8c8e3",
+      "note": "",
+      "tables": [
+        "public.users",
+        "public.workspaces",
+        "public.memberships"
+      ]
+    },
+    {
+      "name": "Project_work",
+      "color": "#a3cebd",
+      "note": "",
+      "tables": [
+        "public.projects",
+        "public.tasks"
+      ]
+    }
+  ]
+}
