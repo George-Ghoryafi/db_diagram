@@ -73,3 +73,39 @@ export function replaceNote(source: string, name: string, replacement: string) {
   }
   throw new Error("Could not locate this note. Edit it in DBML.");
 }
+
+// Locate a whole table without mistaking quoted braces or comments for syntax.
+export function findTableRange(source: string, schema: string, name: string) {
+  const tokens = [
+    ...source.matchAll(
+      /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'''[\s\S]*?'''|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[A-Za-z_][\w]*|[{}.]/g,
+    ),
+  ].filter((m) => !m[0].startsWith("//") && !m[0].startsWith("/*"));
+  const identifier = (value: string) =>
+    value.startsWith('"') ? JSON.parse(value) : value;
+  let depth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    if (depth === 0 && tokens[i][0].toLowerCase() === "table") {
+      let j = i + 1;
+      let table = identifier(tokens[j]?.[0] || ""),
+        namespace = "public";
+      if (tokens[j + 1]?.[0] === ".") {
+        namespace = table;
+        table = identifier(tokens[j + 2]?.[0] || "");
+        j += 2;
+      }
+      if (namespace === schema && table === name) {
+        while (j < tokens.length && tokens[j][0] !== "{") j++;
+        let nested = 0;
+        for (; j < tokens.length; j++) {
+          if (tokens[j][0] === "{") nested++;
+          if (tokens[j][0] === "}" && --nested === 0)
+            return { from: tokens[i].index!, to: tokens[j].index! + 1 };
+        }
+      }
+    }
+    if (tokens[i][0] === "{") depth++;
+    if (tokens[i][0] === "}") depth--;
+  }
+  return null;
+}

@@ -14,13 +14,15 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getSmoothStepPath,
+  getViewportForBounds,
+  type FitViewOptions,
   type EdgeProps,
   type NodeProps,
   type Node,
 } from "@xyflow/react";
-import CodeMirror from "@uiw/react-codemirror";
-import { StreamLanguage } from "@codemirror/language";
-import { sql } from "@codemirror/legacy-modes/mode/sql";
+import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import { EditorView } from "@codemirror/view";
+
 import {
   Database,
   ChevronDown,
@@ -49,10 +51,11 @@ import {
   Route,
   Focus,
 } from "lucide-react";
-import { addIndex, replaceNote } from "./dbml-edit";
+import { addIndex, replaceNote, findTableRange } from "./dbml-edit";
 import { visibleFields, matchesSearch, type Detail } from "./canvas";
 import { arrangeTables, type Arrangement } from "./layout";
-import { exampleDocument } from "./example";
+import { exampleDocument, exampleLayoutForCanvas } from "./example";
+import { dbmlLanguage, dbmlColors } from "./dbml-language";
 import exampleModel from "./example-model.json";
 
 type Field = {
@@ -283,20 +286,27 @@ function RelationshipEdge(props: EdgeProps) {
   );
 }
 const edgeTypes = { relationship: RelationshipEdge };
+const initialExampleLayout = exampleLayoutForCanvas(
+  window.innerWidth - Math.max(280, Math.min(400, window.innerWidth * 0.3)),
+  window.innerHeight - 80,
+);
 const exampleNodes: Node[] = [
   ...exampleModel.tables.map((table) => ({
     id: table.id,
     type: "table",
-    initialWidth:235,initialHeight:33+table.fields.length*27+(table.indexes.length?25:0),
-    position: exampleDocument.layout[table.id],
+    initialWidth: 260,
+    initialHeight:
+      33 + table.fields.length * 30 + (table.indexes.length ? 25 : 0),
+    position: initialExampleLayout[table.id],
     data: { table },
     zIndex: 1,
   })),
   ...exampleModel.notes.map((note) => ({
     id: note.id,
     type: "note",
-    initialWidth:240,initialHeight:210,
-    position: exampleDocument.layout[note.id],
+    initialWidth: 240,
+    initialHeight: 210,
+    position: initialExampleLayout[note.id],
     data: { note },
     zIndex: 1,
   })),
@@ -329,8 +339,10 @@ function Workspace() {
     [canvasSearch, setCanvasSearch] = useState(""),
     [noteText, setNoteText] = useState(""),
     [editingNote, setEditingNote] = useState("");
+  const editorRef = useRef<ReactCodeMirrorRef>(null);
+  const canvasRef = useRef<HTMLElement>(null);
   const viewport = useViewport();
-  const nodesInitialized=useNodesInitialized();
+  const nodesInitialized = useNodesInitialized();
   const saved = useRef(exampleDocument.dbml),
     latestCode = useRef(exampleDocument.dbml),
     saving = useRef(false),
@@ -370,7 +382,37 @@ function Workspace() {
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [modal]);
-  useEffect(()=>{if(nodesInitialized&&fitPending.current){fitPending.current=false;flow.fitView({padding:0.12,maxZoom:1});}},[nodesInitialized,doc?.id,doc?.revision]);
+  const fitDiagram = (options: FitViewOptions = {}) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return Promise.resolve(false);
+    const bounds = flow.getNodesBounds(
+      options.nodes?.map((node) => node.id) ?? flow.getNodes(),
+    );
+    const next = getViewportForBounds(
+      bounds,
+      canvas.clientWidth,
+      canvas.clientHeight,
+      0.15,
+      options.maxZoom ?? 2,
+      options.padding ?? 0.12,
+    );
+    return flow.setViewport(next, { duration: options.duration });
+  };
+  const fitInitialDiagram = () => {
+    if (!fitPending.current) return;
+    fitPending.current = false;
+    void fitDiagram({ padding: 0.12, maxZoom: 1 }).then(() => {
+      const canvas = canvasRef.current;
+      if (canvas && canvas.clientHeight > canvas.clientWidth * 1.2) {
+        const bounds = flow.getNodesBounds(flow.getNodes());
+        const current = flow.getViewport();
+        void flow.setViewport({ ...current, y: 104 - bounds.y * current.zoom });
+      }
+    });
+  };
+  useEffect(() => {
+    if (nodesInitialized) fitInitialDiagram();
+  }, [nodesInitialized, doc?.id, doc?.revision]);
   const refresh = () => api("/schemas").then(setDocs);
   const load = async (id: string) => {
     if (dirty.current) {
@@ -379,10 +421,15 @@ function Workspace() {
     }
     try {
       const d = await api("/schemas/" + id);
+      const untouchedExample =
+        d.id === "welcome" &&
+        d.dbml === exampleDocument.dbml &&
+        JSON.stringify(d.layout) === JSON.stringify(exampleDocument.layout);
+      if (untouchedExample) d.layout = initialExampleLayout;
       saved.current = d.dbml;
       latestCode.current = d.dbml;
       fitPending.current = true;
-      if (doc?.id !== d.id) {
+      if (doc?.id !== d.id || !untouchedExample) {
         setModel({ notes: [], tables: [], refs: [], groups: [] });
         setNodes([]);
       }
@@ -429,6 +476,7 @@ function Workspace() {
                 const existing = old.find((n) => n.id === t.id);
                 const g = m.groups.find((g) => g.tables.includes(t.id));
                 return {
+                  ...existing,
                   id: t.id,
                   type: "table",
                   position: existing?.position ||
@@ -541,7 +589,9 @@ function Workspace() {
         if (d.revision !== doc.revision) {
           if (dirty.current) {
             setError(
-              doc.storage==='browser'?"Schema changed in another tab. Export your edits, then Revert to load it.":"Schema changed on disk. Export your edits, then Revert to load the agent version.",
+              doc.storage === "browser"
+                ? "Schema changed in another tab. Export your edits, then Revert to load it."
+                : "Schema changed on disk. Export your edits, then Revert to load the agent version.",
             );
           } else {
             saved.current = d.dbml;
@@ -688,8 +738,8 @@ function Workspace() {
         .filter((n) => n.type === "table")
         .map((n) => ({
           id: n.id,
-          width: 235,
-          height: 33 + (n.data.table as Table).fields.length * 27 + 25,
+          width: 260,
+          height: 33 + (n.data.table as Table).fields.length * 30 + 25,
         })),
       model.refs,
       model.groups,
@@ -704,7 +754,7 @@ function Workspace() {
       })),
     );
     setTimeout(() => {
-      flow.fitView({ duration: 400, padding: 0.15 });
+      fitDiagram({ includeHiddenNodes: true, duration: 400, padding: 0.15 });
       persistLayout();
     }, 100);
   };
@@ -756,7 +806,7 @@ function Workspace() {
     if (!members.length) return [];
     const x = Math.min(...members.map((n) => n.position.x)) - 22,
       y = Math.min(...members.map((n) => n.position.y)) - 38;
-    const right = Math.max(...members.map((n) => n.position.x + 235)),
+    const right = Math.max(...members.map((n) => n.position.x + 260)),
       bottom = Math.max(
         ...members.map(
           (n) =>
@@ -822,6 +872,25 @@ function Workspace() {
     };
   });
   const focusSelection = (id: string) => {
+    const table = model.tables.find((t) => t.id === id);
+    const range = table && findTableRange(code, table.schema, table.name);
+    if (range) {
+      setTab("DBML");
+      setEditorVisible(true);
+      requestAnimationFrame(() => {
+        const view = editorRef.current?.view;
+        if (view) {
+          view.dispatch({
+            selection: { anchor: range.from, head: range.to },
+            effects: EditorView.scrollIntoView(range.from, {
+              y: "start",
+              yMargin: 24,
+            }),
+          });
+          view.focus();
+        }
+      });
+    }
     setSelectedEdge("");
     setSelected(id);
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })));
@@ -838,7 +907,12 @@ function Workspace() {
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "1") flow.fitView({ duration: 300, padding: 0.15 });
+      if (e.key === "1")
+        fitDiagram({
+          includeHiddenNodes: true,
+          duration: 300,
+          padding: 0.15,
+        });
       if (e.key === "2") setModal("arrange");
       if (e.key === "3") setHighlight((v) => !v);
       if (e.key === "4") setSnap((v) => !v);
@@ -852,7 +926,13 @@ function Workspace() {
     setSelected(model.tables.some((t) => t.id === id) ? id : "");
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })));
     const n = flow.getNode(id);
-    if (n) flow.fitView({ nodes: [n], duration: 400, maxZoom: 1.1 });
+    if (n)
+      fitDiagram({
+        includeHiddenNodes: true,
+        nodes: [n],
+        duration: 400,
+        maxZoom: 1.1,
+      });
   };
   return (
     <div className="app">
@@ -862,9 +942,6 @@ function Workspace() {
             <Database size={18} />
           </span>
           dbdiagram{" "}
-          <span className="local">
-            {doc?.storage === "browser" ? "BROWSER" : "LOCAL"}
-          </span>
         </div>
         <span className="slash">/</span>
         <select
@@ -960,32 +1037,11 @@ function Workspace() {
                   </a>
                 </div>
                 <CodeMirror
+                  ref={editorRef}
                   value={code}
                   height="100%"
                   theme="dark"
-                  extensions={[
-                    StreamLanguage.define(
-                      sql({
-                        keywords: {
-                          Table: true,
-                          TableGroup: true,
-                          Ref: true,
-                          Enum: true,
-                          indexes: true,
-                          Project: true,
-                        },
-                        builtin: {
-                          integer: true,
-                          int: true,
-                          varchar: true,
-                          timestamp: true,
-                          decimal: true,
-                          text: true,
-                          boolean: true,
-                        },
-                      }),
-                    ),
-                  ]}
+                  extensions={[dbmlLanguage, dbmlColors]}
                   onChange={change}
                   basicSetup={{
                     foldGutter: true,
@@ -1094,7 +1150,10 @@ function Workspace() {
             )}
           </aside>
         )}
-        <section className={"canvas " + (panMode ? "pan-mode" : "")}>
+        <section
+          ref={canvasRef}
+          className={"canvas " + (panMode ? "pan-mode" : "")}
+        >
           <div className="canvas-top">
             {!editorVisible && (
               <button
@@ -1105,7 +1164,6 @@ function Workspace() {
               </button>
             )}
             <div>
-              <b>{doc?.name || "Your schema"}</b>
               <span>
                 {model.tables.length} tables <i>·</i> {model.refs.length}{" "}
                 relationships
@@ -1116,6 +1174,7 @@ function Workspace() {
             </span>
           </div>
           <ReactFlow
+            onInit={fitInitialDiagram}
             nodes={[...groupNodes, ...displayedNodes]}
             edges={edges}
             nodeTypes={nodeTypes}
@@ -1184,8 +1243,6 @@ function Workspace() {
             snapToGrid={snap}
             snapGrid={[20, 20]}
             onNodeDragStop={persistLayout}
-            fitView
-            fitViewOptions={{padding:0.12,maxZoom:1}}
             minZoom={0.15}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
@@ -1232,7 +1289,13 @@ function Workspace() {
             <button
               title="Fit diagram (1)"
               aria-label="Fit diagram"
-              onClick={() => flow.fitView({ duration: 300, padding: 0.15 })}
+              onClick={() =>
+                fitDiagram({
+                  includeHiddenNodes: true,
+                  duration: 300,
+                  padding: 0.15,
+                })
+              }
             >
               <Maximize size={17} />
             </button>
@@ -1382,7 +1445,8 @@ function Workspace() {
         </span>
         <span>
           <Database size={12} /> PostgreSQL{" "}
-          <span className="footer-divider">|</span> {doc?.storage==='browser'?'Browser workspace':'Local workspace'}
+          <span className="footer-divider">|</span>{" "}
+          {doc?.storage === "browser" ? "Browser workspace" : "Local workspace"}
         </span>
       </footer>
       {modal && (
@@ -1524,7 +1588,8 @@ function Workspace() {
                             )!;
                             setSelected("");
                             setSelectedEdge(ref.id);
-                            flow.fitView({
+                            fitDiagram({
+                              includeHiddenNodes: true,
                               nodes: flow
                                 .getNodes()
                                 .filter(

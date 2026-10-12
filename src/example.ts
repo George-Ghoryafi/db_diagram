@@ -83,11 +83,11 @@ Note Explore {
 `;
 export const exampleLayout: Record<string, { x: number; y: number }> = {
   "public.users": { x: 60, y: 100 },
-  "public.workspaces": { x: 60, y: 400 },
-  "public.memberships": { x: 380, y: 280 },
-  "public.projects": { x: 740, y: 100 },
-  "public.tasks": { x: 740, y: 400 },
-  "note:Explore": { x: 380, y: 570 },
+  "public.workspaces": { x: 390, y: 100 },
+  "public.memberships": { x: 720, y: 100 },
+  "public.projects": { x: 390, y: 410 },
+  "public.tasks": { x: 720, y: 410 },
+  "note:Explore": { x: 60, y: 410 },
 };
 export const exampleDocument = {
   id: "welcome",
@@ -97,3 +97,15 @@ export const exampleDocument = {
   layout: exampleLayout,
   storage: "browser" as const,
 };
+
+export function exampleLayoutForCanvas(width: number, height: number) {
+  if (width >= 760 && height < width * 1.2) return exampleLayout;
+  return {
+    "public.users": { x: 40, y: 90 },
+    "public.workspaces": { x: 40, y: 320 },
+    "public.memberships": { x: 40, y: 540 },
+    "public.projects": { x: 370, y: 90 },
+    "public.tasks": { x: 370, y: 320 },
+    "note:Explore": { x: 370, y: 590 },
+  };
+}

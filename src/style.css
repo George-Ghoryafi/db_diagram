@@ -50,8 +50,8 @@ svg {
   overflow: hidden;
 }
 header {
-  height: 58px;
-  min-height: 58px;
+  height: 52px;
+  min-height: 52px;
   background: #1d232b;
   color: #c8ced7;
   display: flex;
@@ -74,7 +74,7 @@ header {
   background: #3273dc;
   border-radius: 4px;
   width: 27px;
-  height: 27px;
+  height: 30px;
   display: grid;
   place-items: center;
 }
@@ -155,8 +155,8 @@ main {
   min-height: 0;
 }
 .editor {
-  width: 410px;
-  min-width: 320px;
+  width: clamp(280px, 30vw, 400px);
+  min-width: 260px;
   max-width: 60%;
   resize: horizontal;
   overflow: hidden;
@@ -166,8 +166,8 @@ main {
   border-right: 1px solid #d7dde5;
 }
 .tabs {
-  height: 47px;
-  min-height: 47px;
+  height: 42px;
+  min-height: 42px;
   display: flex;
   align-items: stretch;
   padding: 0 10px;
@@ -177,9 +177,9 @@ main {
 }
 .tabs button {
   border-radius: 0;
-  padding: 0 9px;
+  padding: 0 7px;
   font-size: 11px;
-  gap: 5px;
+  gap: 4px;
   border-bottom: 2px solid transparent;
 }
 .tabs button.active {
@@ -196,8 +196,8 @@ main {
   color: #7d8591;
 }
 .editor-meta {
-  height: 33px;
-  min-height: 33px;
+  height: 28px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -216,18 +216,25 @@ main {
   color: #8a94a2;
   text-decoration: none;
 }
-.editor > .cm-theme {
+.editor > .cm-theme-dark {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 .cm-editor {
   font-family: "SFMono-Regular", Consolas, monospace !important;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.65;
   height: 100%;
 }
 .cm-scroller {
   font-family: inherit !important;
+  scrollbar-width: none;
+}
+.cm-scroller::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 .cm-content {
   padding: 8px 0 30px !important;
@@ -274,7 +281,7 @@ main {
   top: 0;
   left: 0;
   right: 0;
-  padding: 20px 25px;
+  padding: 16px 20px;
   display: flex;
   align-items: flex-start;
   gap: 15px;
@@ -314,13 +321,13 @@ main {
   border-radius: 5px;
 }
 .table-node {
-  width: 235px;
+  width: 260px;
   background: white;
   border: 1px solid #c4cdd7;
   border-radius: 5px;
   overflow: visible;
   box-shadow: 0 3px 10px #24344a0c;
-  font-size: 11px;
+  font-size: 13px;
 }
 .table-node.selected {
   outline: 2px solid #6b9bda;
@@ -344,7 +351,7 @@ main {
   opacity: 0.6;
 }
 .field {
-  height: 27px;
+  height: 30px;
   position: relative;
   display: flex;
   align-items: center;
@@ -363,8 +370,7 @@ main {
 }
 .field-name {
   color: #405069;
-  font-size: 10px;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
 }
 .field-name sup {
   color: #7c92a9;
@@ -372,8 +378,8 @@ main {
 }
 .field-type {
   margin-left: auto;
-  font-size: 9px;
-  color: #99a5b5;
+  font-size: 11px;
+  color: #84909e;
   max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -442,7 +448,7 @@ main {
 }
 .selection-info {
   position: absolute;
-  top: 82px;
+  top: 54px;
   right: 24px;
   background: white;
   border: 1px solid #dce4ee;
@@ -496,11 +502,11 @@ footer .error {
   color: #df7474 !important;
 }
 .explorer {
-  background: #fbfcfe;
+  background: #222429;
   flex: 1;
   overflow: auto;
   padding: 20px;
-  color: #536073;
+  color: #d5dbe3;
 }
 .explorer-title {
   display: flex;
@@ -740,7 +746,7 @@ footer .error {
     width: 16px;
   }
   .editor {
-    width: 355px;
+    width: clamp(280px, 30vw, 400px);
   }
   .private {
     display: none;
@@ -818,7 +824,7 @@ footer .error {
 .group-node {
   height: 100%;
   width: 100%;
-  border: 1px dashed;
+  border: 1px solid;
   border-radius: 9px;
   pointer-events: none;
 }
@@ -1127,4 +1133,83 @@ footer .error {
 .react-flow__node-group {
   pointer-events: none !important;
 }
-.react-flow__edgelabel-renderer{z-index:4}.edge-name{z-index:1}
+.react-flow__edgelabel-renderer {
+  z-index: 4;
+}
+.edge-name {
+  z-index: 1;
+}
+
+.explorer .search,
+.explorer-card,
+.group-card {
+  background: #2b2e34;
+  border-color: #3a3e46;
+  color: #d2d9e3;
+}
+.explorer .search input,
+.group-card button {
+  color: #c2cbd7;
+}
+.explorer-card:hover,
+.group-card button:hover {
+  background: #343943;
+}
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: #264f78 !important;
+}
+.table-node {
+  border-color: #d0d6df;
+  box-shadow: 0 2px 6px #24344a0d;
+}
+.field-key {
+  color: #8a95a4;
+}
+.react-flow__minimap {
+  width: 120px !important;
+  height: 78px !important;
+}
+@media (max-width: 1100px) {
+  .react-flow__minimap {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  main {
+    flex-direction: column;
+  }
+  .editor {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: 40%;
+    min-height: 200px;
+    resize: none;
+    border-bottom: 1px solid #414650;
+  }
+  .canvas {
+    min-height: 280px;
+  }
+  .tabs button {
+    font-size: 11px;
+  }
+  header select {
+    min-width: 0;
+    width: 120px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 1000px) {
+  .tabs button {
+    padding: 0 6px;
+    font-size: 10px;
+    gap: 3px;
+  }
+  .tabs button svg {
+    width: 12px;
+  }
+  .tabs {
+    padding: 0 4px;
+  }
+}
