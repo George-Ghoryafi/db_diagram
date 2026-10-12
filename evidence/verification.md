@@ -1,0 +1,1 @@
+Verified 2026-10-12: TypeScript/Vite build; six tests; browser creation, unique index, TableGroup, Save, DBML download; real stdio MCP list/read/write; disk polling rendered agent_added field. Disposable qa-check schema removed. REA observations are passive, origin-filtered; no claim of complete implementation equivalence. No remote base exists for Qodo review.
