@@ -1,0 +1,10 @@
+// Define your database with DBML
+
+Table users {
+  id integer [pk, increment]
+  email varchar [unique, not null]
+
+  indexes {
+    "email" [unique, name: 'email_lookup']
+  }
+}
