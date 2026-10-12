@@ -1,0 +1,30 @@
+{
+  "public.users": {
+    "x": 70,
+    "y": 100
+  },
+  "public.addresses": {
+    "x": 462,
+    "y": 37.375
+  },
+  "public.categories": {
+    "x": 750,
+    "y": 100
+  },
+  "public.products": {
+    "x": 70,
+    "y": 390
+  },
+  "public.orders": {
+    "x": 410,
+    "y": 390
+  },
+  "public.order_items": {
+    "x": 750,
+    "y": 390
+  },
+  "public.payments": {
+    "x": 70,
+    "y": 680
+  }
+}
