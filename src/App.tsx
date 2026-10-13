@@ -363,9 +363,9 @@ function Workspace() {
       if (e.key === "Tab" && dialog) {
         const items = Array.from(
           dialog.querySelectorAll<HTMLElement>(
-            'button,input,textarea,select,a[href],[tabindex]:not([tabindex="-1"])',
+            'button,input,textarea,select,a[href],summary,[tabindex]:not([tabindex="-1"])',
           ),
-        ).filter((el) => !el.hasAttribute("disabled"));
+        ).filter((el) => !el.hasAttribute("disabled") && el.getClientRects().length > 0);
         const first = items[0],
           last = items.at(-1);
         if (dialog.contains(document.activeElement) && !items.includes(document.activeElement as HTMLElement)) {
