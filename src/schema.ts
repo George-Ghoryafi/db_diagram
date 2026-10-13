@@ -1,5 +1,5 @@
 import { Parser, ModelExporter } from "@dbml/core";
-import { readStorageModel } from './storage-model';
+import { readStorageModel } from './storage-model.js';
 
 export class SchemaError extends Error {
   constructor(
