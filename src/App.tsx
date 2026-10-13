@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { routeRelationship, routeGeometry, type TableBounds } from "./edge-routing";
+import { routeRelationship, routeRelationships, routeGeometry, type TableBounds, type Point as RoutePoint } from "./edge-routing";
+import { DiagramSkeleton } from "./DiagramSkeleton";
 import { AgentSetup } from "./AgentSetup";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { TableRecords, type RecordData } from "./TableRecords";
@@ -14,7 +15,6 @@ import {
   useNodesState,
   useReactFlow,
   useViewport,
-  useNodesInitialized,
   useUpdateNodeInternals,
   BaseEdge,
   EdgeLabelRenderer,
@@ -61,6 +61,9 @@ import {
 } from "lucide-react";
 import { addIndex, setAttachedNote, setVisualColor, setTableRecords, findTableRange } from "./dbml-edit";
 import {
+  relationshipPorts,
+  relationshipFlow,
+  type RelationshipPort,
   highlightedRelationships,
   foreignKeyTargets,
   visibleFields,
@@ -195,58 +198,72 @@ function TableNode({ id, data, selected }: NodeProps) {
 function GroupNode({ data }: NodeProps) {
   return (
     <div
-      className="group-node"
+      className={"group-node" + (data.focused ? " is-focused" : "")}
       style={{
-        borderColor: String(data.color),
-        background: String(data.color) + "08",
+        borderColor: `color-mix(in srgb, ${String(data.color)} 65%, #243c57)`,
+        background: `color-mix(in srgb, ${String(data.color)} 6%, white)`,
       }}
     >
-      <span style={{ color: String(data.color) }}>
-        <Layers size={12} />
-        {String(data.name)}
-      </span>
+      <button type="button" className="group-focus-button nodrag nopan" aria-label={`Focus group ${String(data.name)}`} aria-pressed={!!data.focused}
+        style={{ color: `color-mix(in srgb, ${String(data.color)} 45%, #243c57)` }}
+        onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.onFocus as () => void)(); }}>
+        <Layers size={12} />{String(data.name)}
+      </button>
     </div>
   );
 }
 const nodeTypes = { table: TableNode, group: GroupNode };
 function RelationshipEdge(props: EdgeProps) {
+  const ports = props.data?.ports as { source: RelationshipPort; target: RelationshipPort };
+  const sourceY = props.sourceY + (ports?.source.offset || 0);
+  const targetY = props.targetY + (ports?.target.offset || 0);
+  const direction = relationshipFlow(String(props.data?.relation));
   const [path, labelX, labelY] = useMemo(() => {
-    const points = routeRelationship(
-      { x: props.sourceX, y: props.sourceY },
-      { x: props.targetX, y: props.targetY },
+    const planned = props.data?.route as RoutePoint[] | null | undefined;
+    const points = planned || routeRelationship(
+      { x: props.sourceX, y: sourceY },
+      { x: props.targetX, y: targetY },
       (props.data?.obstacles || []) as TableBounds[],
     );
-    if (!points) return getSmoothStepPath(props);
-    const geometry = routeGeometry(points);
+    if (!points) return getSmoothStepPath({ ...props, sourceY, targetY });
+    const adjusted = points.map(point => ({ ...point }));
+    adjusted[0] = { x: props.sourceX, y: sourceY };
+    adjusted[adjusted.length - 1] = { x: props.targetX, y: targetY };
+    if (adjusted.length > 2) { adjusted[1].y = sourceY; adjusted[adjusted.length - 2].y = targetY; }
+    const geometry = routeGeometry(adjusted);
     return [geometry.path, geometry.label.x, geometry.label.y] as const;
-  }, [props.sourceX, props.sourceY, props.targetX, props.targetY, props.data?.obstacles]);
+  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.obstacles, props.data?.route]);
   const parts = String(props.data?.relation || "").split(":");
   const highlighted = props.selected || !!props.data?.highlighted;
   return (
     <>
       <BaseEdge
         id={props.id}
+        className={`relationship-line flow-${direction}`}
         path={path}
         style={props.style}
-        interactionWidth={24}
+        interactionWidth={10}
       />
       {[
-        { x: props.sourceX, y: props.sourceY, direction: 1, cardinality: parts[0] },
-        { x: props.targetX, y: props.targetY, direction: -1, cardinality: parts[1] },
-      ].map(({ x, y, direction, cardinality }, index) => (
+        { x: props.sourceX, y: sourceY, direction: 1, cardinality: parts[0], port: ports?.source },
+        { x: props.targetX, y: targetY, direction: -1, cardinality: parts[1], port: ports?.target },
+      ].map(({ x, y, direction, cardinality, port }, index) => (
         <path
           key={index}
           className="edge-cardinality"
           aria-label={cardinality === "*" ? "Many" : "One"}
           d={cardinality === "*"
-            ? `M ${x + direction * 2} ${y - 6} L ${x + direction * 15} ${y} L ${x + direction * 2} ${y + 6} M ${x + direction * 2} ${y} L ${x + direction * 15} ${y}`
-            : `M ${x + direction * 8} ${y - 6} L ${x + direction * 8} ${y + 6}`}
+            ? `M ${x + direction * 2} ${y - (port?.halfHeight || 6)} L ${x + direction * (port?.width || 15)} ${y} L ${x + direction * 2} ${y + (port?.halfHeight || 6)} M ${x + direction * 2} ${y} L ${x + direction * (port?.width || 15)} ${y}`
+            : `M ${x + direction * ((port?.width || 15) / 2)} ${y - (port?.halfHeight || 6)} L ${x + direction * ((port?.width || 15) / 2)} ${y + (port?.halfHeight || 6)}`}
           fill="none"
           stroke={String(props.style?.stroke || (highlighted ? "#3273dc" : "#748699"))}
-          strokeWidth={1.5}
+          strokeWidth={Math.min(1.5, (port?.halfHeight || 6) * .4)}
           pointerEvents="none"
         />
       ))}
+      {highlighted && direction === "both" && <g className="relationship-particles" fill={String(props.style?.stroke || "#3273dc")}>
+        {["0;1", "1;0"].map(points => <circle key={points} r={2.4}><animateMotion path={path} dur="3s" repeatCount="indefinite" keyPoints={points} keyTimes="0;1" calcMode="linear" /></circle>)}
+      </g>}
       <EdgeLabelRenderer>
         {!!props.data?.explicitSelected && <div className="edge-access-icons nodrag nopan" style={{transform:`translate(-50%,-100%) translate(${(props.data?.accessPoint as {x:number;y:number} | undefined)?.x ?? labelX}px,${((props.data?.accessPoint as {x:number;y:number} | undefined)?.y ?? labelY)-12}px)`}}>
           <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#93a2b3')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />
@@ -291,6 +308,7 @@ function Workspace() {
     [groupColor, setGroupColor] = useState("#537bad");
   const [arrangement, setArrangement] = useState<Arrangement>("left-right");
   const [selectedEdge, setSelectedEdge] = useState("");
+  const [focusedGroup, setFocusedGroup] = useState("");
   const [edgeAccessPoint, setEdgeAccessPoint] = useState<{x:number;y:number}>();
   const [recordFocus, setRecordFocus] = useState<RecordFocus>();
   const [recordHistory, setRecordHistory] = useState<{tableId: string; focus?: RecordFocus}[]>([]);
@@ -339,7 +357,7 @@ function Workspace() {
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
   const viewport = useViewport();
-  const nodesInitialized = useNodesInitialized();
+  const nodesInitialized = nodes.length > 0 && nodes.every(node => !!node.measured?.width && !!node.measured?.height);
   const saved = useRef(""),
     latestCode = useRef(""),
     saving = useRef(false),
@@ -395,20 +413,15 @@ function Workspace() {
     return flow.setViewport(next, { duration: options.duration });
   };
   const fitInitialDiagram = () => {
-    if (!fitPending.current) return;
+    if (!fitPending.current || loading || !nodesInitialized || !nodes.length) return;
     fitPending.current = false;
-    void fitDiagram({ padding: 0.12, maxZoom: 1 }).then(() => {
-      const canvas = canvasRef.current;
-      if (canvas && canvas.clientHeight > canvas.clientWidth * 1.2) {
-        const bounds = flow.getNodesBounds(flow.getNodes());
-        const current = flow.getViewport();
-        void flow.setViewport({ ...current, y: 104 - bounds.y * current.zoom });
-      }
-    });
+    void fitDiagram({ padding: 0.12, maxZoom: 1 });
   };
   useEffect(() => {
-    if (nodesInitialized) fitInitialDiagram();
-  }, [nodesInitialized, doc?.id, doc?.revision]);
+    if (!nodesInitialized || loading) return;
+    const frame = requestAnimationFrame(fitInitialDiagram);
+    return () => cancelAnimationFrame(frame);
+  }, [nodesInitialized, loading, doc?.id, doc?.revision, loadVersion]);
   const refresh = async () => {
     const [documents, groups] = await Promise.all([
       api("/schemas"),
@@ -449,6 +462,7 @@ function Workspace() {
       setError("");
       setSelected("");
       setSelectedEdge("");
+      setFocusedGroup("");
     } catch (e) {
       if (run !== loadRun.current) return;
       setError((e as Error).message);
@@ -875,7 +889,7 @@ function Workspace() {
         }), model.refs, model.groups, mode,
       );
       if (!current()) return;
-      setSelected(""); setSelectedEdge(""); setEdgeAccessPoint(undefined);
+      setSelected(""); setSelectedEdge(""); setEdgeAccessPoint(undefined); setFocusedGroup("");
       setNodes(ns => ns.map(n => positions[n.id] ? { ...n, position: positions[n.id], selected: false } : n));
       setTimeout(() => {
         if (!current()) return;
@@ -921,6 +935,7 @@ function Workspace() {
     return {
       ...n,
       selected: n.id === selected,
+      zIndex: 2,
       data: {
         ...n.data,
         detail,
@@ -963,7 +978,11 @@ function Workspace() {
         id: "group:" + g.name,
         type: "group",
         position: { x, y },
-        data: { name: g.name, color: g.color || "#537bad" },
+        data: { name: g.name, color: g.color || "#537bad", focused: focusedGroup === g.name, onFocus: () => {
+          setFocusedGroup(g.name); setSelected(""); setSelectedEdge("");
+          const group = flow.getNode("group:" + g.name);
+          if (group) void fitDiagram({ nodes: [group], duration: 400, padding: 0.12, maxZoom: 1.1 });
+        } },
         initialWidth: right - x + 22,
         initialHeight: bottom - y + 22,
         width: right - x + 22,
@@ -971,7 +990,7 @@ function Workspace() {
         style: { width: right - x + 22, height: bottom - y + 22 },
         draggable: false,
         selectable: false,
-        zIndex: 0,
+        zIndex: focusedGroup === g.name ? 1 : 0,
       },
     ];
   });
@@ -980,6 +999,24 @@ function Workspace() {
     width: n.measured?.width || 260,
     height: n.measured?.height || (detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
   }));
+  const ports = relationshipPorts(model.refs, detail);
+  const routingRequests = model.refs.flatMap(ref => {
+    const from = displayedNodes.find(n => n.id === ref.fromTable), to = displayedNodes.find(n => n.id === ref.toTable);
+    if (!from || !to) return [];
+    const endpoint = (node: Node, field: string, source: boolean) => {
+      const handleId = detail === "names" ? source ? "header-out" : "header-in" : field + (source ? "-out" : "-in");
+      const handle = flow.getInternalNode(node.id)?.internals.handleBounds?.[source ? "source" : "target"]?.find(handle => handle.id === handleId);
+      const fields = visibleFields((node.data.table as Table).fields, detail, (node.data.keys as string[]) || []);
+      return { x: node.position.x + (handle ? handle.x + handle.width / 2 : source ? node.measured?.width || 260 : 0),
+        y: node.position.y + (handle ? handle.y + handle.height / 2 : detail === "names" ? 16.5 : 49 + Math.max(0, fields.findIndex(f => f.name === field)) * 30) };
+    };
+    const source = endpoint(from, ref.fromFields[0], true), target = endpoint(to, ref.toFields[0], false);
+    source.y += ports[ref.id].source.offset;
+    target.y += ports[ref.id].target.offset;
+    return [{ id: ref.id, source, target }];
+  });
+  const routingKey = JSON.stringify({ routingRequests, obstacles });
+  const relationshipRoutes = useMemo(() => routeRelationships(routingRequests, obstacles), [routingKey]);
   const edges = model.refs.map((r) => {
     const active = r.id === selectedEdge;
     const related = highlightedRefs.has(r.id);
@@ -994,8 +1031,10 @@ function Workspace() {
       ariaLabel: `Relationship ${r.name || r.fromTable + " to " + r.toTable}`,
       selected: active || (!!selected && (r.fromTable===selected || r.toTable===selected)),
       animated: active || related,
-      interactionWidth: 24,
+      interactionWidth: 10,
       data: {
+        ports: ports[r.id],
+        route: relationshipRoutes[r.id],
         obstacles,
         color: r.color,
         accessPoint: active ? edgeAccessPoint : undefined,
@@ -1050,6 +1089,7 @@ function Workspace() {
       const el = e.target as HTMLElement;
       if (loading || modal || el.closest("input,textarea,select,[contenteditable=true],.appearance-settings"))
         return;
+      if (e.key === "Escape" && focusedGroup) { setFocusedGroup(""); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setCanvasSearch("");
@@ -1070,7 +1110,7 @@ function Workspace() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, doc?.id, loading]);
+  }, [modal, doc?.id, loading, focusedGroup]);
   const focus = (id: string) => {
     setSelectedEdge("");
     setSelected(model.tables.some((t) => t.id === id) ? id : "");
@@ -1335,7 +1375,7 @@ function Workspace() {
           className={"canvas " + (panMode ? "pan-mode" : "")}
         >
           {loading && <div className="canvas-loading" role="status" aria-live="polite">
-            <LoaderCircle size={26} aria-hidden="true" /><strong>Loading your diagram</strong><span>Getting your schema and saved layout ready…</span>
+            <DiagramSkeleton /><div className="loading-caption"><strong>Loading your diagram</strong><span>Getting your schema and saved layout ready…</span></div>
           </div>}
           {arranging && !loading && <div className="layout-progress" role="status"><LoaderCircle size={14} aria-hidden="true" />Arranging tables…</div>}
           {!doc && !loading && error && <div className="empty-bundle"><AlertCircle size={28} /><h2>Could not load your workspace</h2><p>{error}</p><button className="primary" onClick={() => window.location.reload()}>Try again</button></div>}
@@ -1411,6 +1451,7 @@ function Workspace() {
               if (n.type === "table") focusSelection(n.id);
             }}
             onPaneClick={() => {
+              setFocusedGroup("");
               setSelected("");
               setSelectedEdge("");
             }}

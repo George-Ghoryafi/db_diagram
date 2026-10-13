@@ -34,3 +34,30 @@ test('self references and targets behind the source route around their own table
 test('routes can use narrow gaps between tables', () => {
   verify({ x: 100, y: 50 }, { x: 110, y: 50 }, [{ x: 0, y: 0, width: 100, height: 100 }, { x: 110, y: 0, width: 100, height: 100 }]);
 });
+
+test('parallel relationships use distinct lanes and avoid table obstacles', async () => {
+  const { routeRelationships } = await import('../src/edge-routing');
+  const tables = [{ x:0,y:0,width:100,height:100 },{ x:500,y:0,width:100,height:100 },{ x:220,y:0,width:100,height:100 }];
+  const requests = [-9, 0, 9].map((offset, i) => ({ id:String(i), source:{x:100,y:50+offset},target:{x:500,y:50+offset} }));
+  const routes = routeRelationships(requests,tables);
+  const segments: { a:Point;b:Point;id:string }[] = [];
+  for (const request of requests) {
+    const route = routes[request.id];
+    assert.ok(route);
+    assert.deepEqual(route[0],request.source);
+    assert.deepEqual(route.at(-1),request.target);
+    for(let i=1;i<route.length;i++) {
+      const a: Point=route[i-1],b: Point=route[i];
+      assert.ok(a.x===b.x || a.y===b.y);
+      assert.ok(!tables.some(table=>crossesTable(a,b,table)));
+      for(const other of segments) {
+        if(other.id===request.id)continue;
+        const horizontal=a.y===b.y && other.a.y===other.b.y && a.y===other.a.y;
+        const vertical=a.x===b.x && other.a.x===other.b.x && a.x===other.a.x;
+        if(horizontal)assert.ok(Math.min(Math.max(a.x,b.x),Math.max(other.a.x,other.b.x))<=Math.max(Math.min(a.x,b.x),Math.min(other.a.x,other.b.x)));
+        if(vertical)assert.ok(Math.min(Math.max(a.y,b.y),Math.max(other.a.y,other.b.y))<=Math.max(Math.min(a.y,b.y),Math.min(other.a.y,other.b.y)));
+      }
+      segments.push({a,b,id:request.id});
+    }
+  }
+});

@@ -152,10 +152,35 @@ test("all layouts handle a dense 15-table graph with field ports, cycles and ver
   const pairs = [[1,2],[1,3],[2,14],[2,11],[3,3],[3,11],[3,14],[3,14],[4,8],[4,11],[4,14],[5,12],[5,1],[6,0],[7,14],[7,11],[8,14],[8,11],[9,14],[9,14],[9,11],[10,11],[10,14],[11,14],[11,14],[11,3],[12,4],[12,3],[13,14],[14,0]];
   const refs = pairs.map(([from, to]) => ({ fromTable: String(from), toTable: String(to), fromFields: ["field1", "field2"], toFields: ["field0", "field1"], relation: "*:1" }));
   const groups = [[0,14,13,6],[11,10,9,7],[2,3,1],[8,4,12,5]].map(ids => ({ tables: ids.map(String) }));
+  const { routeRelationships, crossesTable } = await import('../src/edge-routing');
+  const { relationshipPorts } = await import('../src/canvas');
+  const portRefs = refs.map((ref, i) => ({ ...ref, id: String(i) }));
+  const ports = relationshipPorts(portRefs, 'all');
   const original = JSON.stringify({ items, refs, groups });
   for (const mode of ["left-right", "pipeline", "snowflake", "compact"] as Arrangement[]) {
     const positions = await arrangeTables(items, refs, groups, mode);
     assert.equal(Object.keys(positions).length, items.length);
+    const tables = items.map(item => ({ ...positions[item.id], width:item.width, height:item.height }));
+    const routes = routeRelationships(portRefs.map(ref => ({ id:ref.id,
+      source:{x:positions[ref.fromTable].x+items[Number(ref.fromTable)].width,y:positions[ref.fromTable].y+78+ports[ref.id].source.offset},
+      target:{x:positions[ref.toTable].x,y:positions[ref.toTable].y+48+ports[ref.id].target.offset},
+    })), tables);
+    const segments: {id:string;a:{x:number;y:number};b:{x:number;y:number}}[] = [];
+    for(const [id, route] of Object.entries(routes)) {
+      assert.ok(route, `${mode}: relationship ${id} has a route`);
+      for(let i=1;i<route.length;i++) {
+        const a: {x:number;y:number}=route[i-1],b: {x:number;y:number}=route[i];
+        assert.ok(!tables.some(table=>crossesTable(a,b,table)), `${mode}: route avoids tables`);
+        for(const other of segments) {
+          if(other.id===id)continue;
+          if(a.y===b.y && other.a.y===other.b.y && a.y===other.a.y)
+            assert.ok(Math.min(Math.max(a.x,b.x),Math.max(other.a.x,other.b.x))<=Math.max(Math.min(a.x,b.x),Math.min(other.a.x,other.b.x)),`${mode}: horizontal lines stay separate`);
+          if(a.x===b.x && other.a.x===other.b.x && a.x===other.a.x)
+            assert.ok(Math.min(Math.max(a.y,b.y),Math.max(other.a.y,other.b.y))<=Math.max(Math.min(a.y,b.y),Math.min(other.a.y,other.b.y)),`${mode}: vertical lines stay separate`);
+        }
+        segments.push({id,a,b});
+      }
+    }
     for (let i = 0; i < items.length; i++) {
       const a = items[i], p = positions[a.id];
       assert(Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -166,4 +191,24 @@ test("all layouts handle a dense 15-table graph with field ports, cycles and ver
     }
   }
   assert.equal(JSON.stringify({ items, refs, groups }), original);
+});
+
+test('shared attribute ports keep each relationship inside its own row without overlapping symbols', async () => {
+  const { relationshipPorts, relationshipFlow } = await import('../src/canvas');
+  const refs = Array.from({ length: 6 }, (_, i) => ({ id: String(i), fromTable: 'users', fromFields: ['id'], toTable: 'orders'+i, toFields: ['user_id'] }));
+  const ports = relationshipPorts(refs, 'all');
+  const slots = refs.map(ref => ports[ref.id].source);
+  assert.equal(new Set(slots.map(slot => slot.offset)).size, 6);
+  slots.forEach((slot, i) => {
+    assert.ok(Math.abs(slot.offset) + slot.halfHeight < 15);
+    if (i) assert.ok(slot.offset - slot.halfHeight > slots[i-1].offset + slots[i-1].halfHeight);
+    assert.deepEqual(ports[refs[i].id].target, { offset: 0, halfHeight: 6, width: 15 });
+  });
+  assert.equal(relationshipFlow('1:*'), 'forward');
+  assert.equal(relationshipFlow('*:1'), 'reverse');
+  assert.equal(relationshipFlow('*:*'), 'both');
+  assert.equal(relationshipFlow('1:1'), 'both');
+  const separate = [refs[0], {...refs[1], fromFields:['other']}];
+  assert.equal(relationshipPorts(separate, 'all')['0'].source.offset, 0);
+  assert.notEqual(relationshipPorts(separate, 'names')['0'].source.offset, 0);
 });
