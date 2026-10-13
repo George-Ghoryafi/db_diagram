@@ -201,7 +201,7 @@ function GroupNode({ data }: NodeProps) {
       className={"group-node" + (data.focused ? " is-focused" : "")}
       style={{
         borderColor: `color-mix(in srgb, ${String(data.color)} 35%, #243c57)`,
-        background: `color-mix(in srgb, ${String(data.color)} 6%, white)`,
+        background: `color-mix(in srgb, ${String(data.color)} 6%, transparent)`,
       }}
     >
       <button type="button" className="group-focus-button nodrag nopan" aria-label={`Focus group ${String(data.name)}`} aria-pressed={!!data.focused}
