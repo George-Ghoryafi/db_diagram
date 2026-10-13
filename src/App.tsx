@@ -355,7 +355,7 @@ function Workspace() {
     flow = useReactFlow();
   useEffect(() => {
     if (!modal) return;
-    const dialog = document.querySelector<HTMLElement>("[role=dialog]");
+    const dialog = document.querySelector<HTMLElement>('.modal[role="dialog"]');
     const focusFrame=requestAnimationFrame(()=>{(dialog?.querySelector<HTMLElement>("input:not([disabled]),textarea,select") || dialog?.querySelector<HTMLElement>("button:not([disabled])"))?.focus();});
     const handle = (e: KeyboardEvent) => {
       if (e.key === "Escape") setModal("");
