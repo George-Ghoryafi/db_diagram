@@ -419,7 +419,7 @@ function Workspace() {
       saved.current = d.dbml;
       latestCode.current = d.dbml;
       fitPending.current = true;
-      if (doc?.id !== d.id || !untouchedExample) {
+      if (doc?.id !== d.id) {
         setModel({ notes: [], tables: [], refs: [], groups: [] });
         setNodes([]);
       }
