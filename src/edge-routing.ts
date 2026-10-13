@@ -7,22 +7,36 @@ export function storageLabelPosition(points: Point[], tables: TableBounds[], wid
   })).sort((a, b) => b.length - a.length);
   return candidates.find(point => !tables.some(table => point.x + width / 2 > table.x && point.x - width / 2 < table.x + table.width && point.y + 10 > table.y && point.y - 10 < table.y + table.height)) || routeGeometry(points).label;
 }
-type Segment = { a: Point; b: Point; terminal?: boolean; endpoints?: Point[] };
-export type RelationshipRoute = { id: string; source: Point; target: Point; sourceSide?: "left" | "right"; targetSide?: "left" | "right" };
+type Segment = { a: Point; b: Point; terminal?: boolean; endpoints?: Point[]; bundles?: string[] };
+export type RelationshipRoute = { id: string; source: Point; target: Point; sourceSide?: "left" | "right"; targetSide?: "left" | "right"; sourceBundle?: string; targetBundle?: string };
 const laneGap = 12;
 
 // Reserve cable lanes across the whole diagram, not independently per edge.
 export function routeRelationships(relationships: RelationshipRoute[], tables: TableBounds[]) {
   const routes: Record<string, Point[] | null> = {}, occupied: Segment[] = [];
-  for (const ref of relationships) {
+  const counts = new Map<string, number>();
+  relationships.forEach(ref => [ref.sourceBundle, ref.targetBundle].forEach(key => { if (key) counts.set(key, (counts.get(key) || 0) + 1); }));
+  const bundled = (key?: string) => !!key && (counts.get(key) || 0) > 1;
+  const ordered = [...relationships].sort((a,b) => {
+    const shared = (ref: RelationshipRoute) => bundled(ref.sourceBundle) || bundled(ref.targetBundle);
+    return Number(shared(b)) - Number(shared(a)) || (shared(a) && shared(b) ? Math.abs(a.source.x-a.target.x)+Math.abs(a.source.y-a.target.y)-Math.abs(b.source.x-b.target.x)-Math.abs(b.source.y-b.target.y) : 0);
+  });
+  for (const ref of ordered) {
+    const reverse = !bundled(ref.sourceBundle) && bundled(ref.targetBundle);
+    const source = reverse ? ref.target : ref.source, target = reverse ? ref.source : ref.target;
+    const sourceSide = reverse ? ref.targetSide || 'left' : ref.sourceSide || 'right';
+    const targetSide = reverse ? ref.sourceSide || 'right' : ref.targetSide || 'left';
+    const keys = [ref.sourceBundle, ref.targetBundle].filter((key): key is string => !!key);
+    const bundles = keys.filter(bundled);
     let route: Point[] | null = null;
     for (const [spacing, stem, clearance] of [[12,24,12],[8,24,6],[4,16,2],[2,16,0],[2,48,0],[1,24,0],[1,4,0],[.25,1,0]]) {
-      route = routeWithClearance(ref.source, ref.target, tables, clearance, occupied, stem, spacing, ref.sourceSide, ref.targetSide);
+      route = routeWithClearance(source, target, tables, clearance, occupied, stem, spacing, sourceSide, targetSide, bundles, keys);
       if (route) break;
     }
+    if (route && reverse) route.reverse();
     routes[ref.id] = route;
     if (!route) continue;
-    route.slice(1).forEach((point, index) => occupied.push({ a: route![index], b: point, terminal: index === 0 || index === route!.length - 2, endpoints: [...(index === 0 ? [ref.source] : []), ...(index === route!.length - 2 ? [ref.target] : [])] }));
+    route.slice(1).forEach((point, index) => occupied.push({ a: route![index], b: point, terminal: index === 0 || index === route!.length - 2, bundles: keys, endpoints: [...(index === 0 ? [ref.source] : []), ...(index === route!.length - 2 ? [ref.target] : [])] }));
   }
   return routes;
 }
@@ -44,21 +58,23 @@ export function routeRelationship(source: Point, target: Point, tables: TableBou
   return null;
 }
 
-function routeWithClearance(source: Point, target: Point, tables: TableBounds[], clearance: number, occupied: Segment[] = [], stem = 24, spacing = laneGap, sourceSide: "left" | "right" = "right", targetSide: "left" | "right" = "left"): Point[] | null {
+function routeWithClearance(source: Point, target: Point, tables: TableBounds[], clearance: number, occupied: Segment[] = [], stem = 24, spacing = laneGap, sourceSide: "left" | "right" = "right", targetSide: "left" | "right" = "left", bundles: string[] = [], endpointKeys: string[] = []): Point[] | null {
   const obstacles = tables.map(t => ({ x: t.x - clearance, y: t.y - clearance, width: t.width + clearance * 2, height: t.height + clearance * 2 }));
   const gap = (point: Point, side: "left" | "right") => Math.min(stem * 2, ...obstacles.filter(table => point.y > table.y && point.y < table.y + table.height && (side === "right" ? table.x > point.x : table.x + table.width < point.x)).map(table => side === "right" ? table.x - point.x : point.x - table.x - table.width));
   const start = { x: source.x + (sourceSide === "right" ? 1 : -1) * gap(source, sourceSide) / 2, y: source.y };
   const end = { x: target.x + (targetSide === "right" ? 1 : -1) * gap(target, targetSide) / 2, y: target.y };
-  const xs = [...new Set([start.x, end.x, ...obstacles.flatMap(t => [t.x, t.x + t.width]), ...occupied.filter(s => s.a.x === s.b.x).flatMap(s => [s.a.x - spacing, s.a.x + spacing])])].sort((a, b) => a - b);
-  const ys = [...new Set([start.y, end.y, ...obstacles.flatMap(t => [t.y, t.y + t.height]), ...occupied.filter(s => s.a.y === s.b.y).flatMap(s => [s.a.y - spacing, s.a.y + spacing])])].sort((a, b) => a - b);
+  const shared = occupied.filter(segment => segment.bundles?.some(key => bundles.includes(key)));
+  const xs = [...new Set([start.x, end.x, ...shared.flatMap(segment => [segment.a.x, segment.b.x]), ...obstacles.flatMap(t => [t.x, t.x + t.width]), ...occupied.filter(s => s.a.x === s.b.x).flatMap(s => [s.a.x - spacing, s.a.x + spacing])])].sort((a, b) => a - b);
+  const ys = [...new Set([start.y, end.y, ...shared.flatMap(segment => [segment.a.y, segment.b.y]), ...obstacles.flatMap(t => [t.y, t.y + t.height]), ...occupied.filter(s => s.a.y === s.b.y).flatMap(s => [s.a.y - spacing, s.a.y + spacing])])].sort((a, b) => a - b);
   const point = (index: number): Point => ({ x: xs[index % xs.length], y: ys[Math.floor(index / xs.length)] });
   const inside = (p: Point) => obstacles.some(t => p.x > t.x && p.x < t.x + t.width && p.y > t.y && p.y < t.y + t.height);
   if (inside(start) || inside(end)) return null;
   const startIndex = ys.indexOf(start.y) * xs.length + xs.indexOf(start.x);
   const endIndex = ys.indexOf(end.y) * xs.length + xs.indexOf(end.x);
   type Step = { index: number; direction: number; cost: number; estimate: number; key: string };
-  const initial = `${startIndex}:0`;
-  const queue: Step[] = [{ index: startIndex, direction: 0, cost: 0, estimate: 0, key: initial }];
+  const initialDirection = bundles.length ? 1 : 0;
+  const initial = `${startIndex}:${initialDirection}`;
+  const queue: Step[] = [{ index: startIndex, direction: initialDirection, cost: 0, estimate: 0, key: initial }];
   const push = (step: Step) => {
     queue.push(step);
     let i = queue.length - 1;
@@ -83,7 +99,7 @@ function routeWithClearance(source: Point, target: Point, tables: TableBounds[],
     }
     return first;
   };
-  const sharedEndpoint = (segment: Segment) => segment.endpoints?.some(point => (point.x === source.x && point.y === source.y) || (point.x === target.x && point.y === target.y));
+  const sharedEndpoint = (segment: Segment) => segment.bundles?.some(key => bundles.includes(key)) || (!endpointKeys.length && !segment.bundles?.length && segment.endpoints?.some(point => (point.x === source.x && point.y === source.y) || (point.x === target.x && point.y === target.y)));
   const parallelBlocked = (a: Point, b: Point) => occupied.some(s => !sharedEndpoint(s) && (a.y === b.y && s.a.y === s.b.y
     ? Math.abs(a.y - s.a.y) < (s.terminal ? 0.01 : spacing - 0.01) && Math.max(Math.min(a.x,b.x),Math.min(s.a.x,s.b.x)) < Math.min(Math.max(a.x,b.x),Math.max(s.a.x,s.b.x))
     : a.x === b.x && s.a.x === s.b.x && Math.abs(a.x - s.a.x) < (s.terminal ? 0.01 : spacing - 0.01) && Math.max(Math.min(a.y,b.y),Math.min(s.a.y,s.b.y)) < Math.min(Math.max(a.y,b.y),Math.max(s.a.y,s.b.y))));
@@ -114,11 +130,15 @@ function routeWithClearance(source: Point, target: Point, tables: TableBounds[],
         blockedSegments.set(segmentKey, blocked);
       }
       if (blocked) continue;
-      const cost = current.cost + Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + (current.direction && current.direction !== direction ? 24 : 0);
+      const reused = Math.max(0, ...shared.map(segment => a.y === b.y && segment.a.y === segment.b.y && a.y === segment.a.y
+        ? Math.max(0, Math.min(Math.max(a.x,b.x),Math.max(segment.a.x,segment.b.x)) - Math.max(Math.min(a.x,b.x),Math.min(segment.a.x,segment.b.x)))
+        : a.x === b.x && segment.a.x === segment.b.x && a.x === segment.a.x
+          ? Math.max(0, Math.min(Math.max(a.y,b.y),Math.max(segment.a.y,segment.b.y)) - Math.max(Math.min(a.y,b.y),Math.min(segment.a.y,segment.b.y))) : 0));
+      const cost = current.cost + Math.abs(a.x - b.x) + Math.abs(a.y - b.y) - reused * .35 + (current.direction && current.direction !== direction ? 24 : 0);
       const key = `${index}:${direction}`;
       if (cost >= (costs.get(key) ?? Infinity)) continue;
       costs.set(key, cost); previous.set(key, current.key);
-      push({ index, direction, cost, key, estimate: cost + Math.abs(b.x - end.x) + Math.abs(b.y - end.y) });
+      push({ index, direction, cost, key, estimate: cost + (bundles.length ? .65 : 1) * (Math.abs(b.x - end.x) + Math.abs(b.y - end.y)) });
     }
   }
   return null;
@@ -165,4 +185,21 @@ export function projectToRoute(points: Point[], point: Point) {
     if (candidate < distance) { nearest = projection; distance = candidate; }
   }
   return nearest;
+}
+
+// Put names on individual branches instead of stacking them on a shared cable trunk.
+export function branchLabelPosition(points: Point[], others: Point[][]) {
+  const candidates: { point: Point; length: number }[] = [];
+  points.slice(1).forEach((b,index)=>{
+    const a=points[index], horizontal=a.y===b.y, fixed=horizontal?a.y:a.x;
+    let intervals=[[Math.min(horizontal?a.x:a.y,horizontal?b.x:b.y),Math.max(horizontal?a.x:a.y,horizontal?b.x:b.y)]];
+    for(const route of others) for(let i=1;i<route.length;i++){
+      const c=route[i-1],d=route[i];
+      if((horizontal ? c.y!==d.y || c.y!==fixed : c.x!==d.x || c.x!==fixed))continue;
+      const low=Math.min(horizontal?c.x:c.y,horizontal?d.x:d.y),high=Math.max(horizontal?c.x:c.y,horizontal?d.x:d.y);
+      intervals=intervals.flatMap(([start,end])=>high<=start||low>=end?[[start,end]]:[[start,Math.max(start,low)],[Math.min(end,high),end]].filter(([start,end])=>end>start));
+    }
+    intervals.forEach(([start,end])=>{if(end>start)candidates.push({length:end-start,point:horizontal?{x:(start+end)/2,y:fixed}:{x:fixed,y:(start+end)/2}});});
+  });
+  return candidates.sort((a,b)=>b.length-a.length)[0]?.point || routeGeometry(points).label;
 }

@@ -1,3 +1,4 @@
+import { relationshipField } from './composite-relationships';
 import { isMany } from './cardinality';
 export type Detail = "all" | "keys" | "names";
 export function visibleFields<T extends { name: string; pk?: boolean }>(
@@ -28,7 +29,7 @@ export function highlightedRelationships(
         (ref) =>
           ref.id === selectedEdge ||
           (hoveredField
-            ? (ref.fromTable === hoveredField.tableId && !!ref.fromFields?.includes(hoveredField.field)) || (ref.toTable === hoveredField.tableId && !!ref.toFields?.includes(hoveredField.field))
+            ? (ref.fromTable === hoveredField.tableId && !!ref.fromFields && (ref.fromFields.includes(hoveredField.field) || relationshipField(ref.fromFields) === hoveredField.field)) || (ref.toTable === hoveredField.tableId && !!ref.toFields && (ref.toFields.includes(hoveredField.field) || relationshipField(ref.toFields) === hoveredField.field))
             : (enabled || !!selectedTable) &&
             (!selectedTable ||
               ref.fromTable === selectedTable ||
@@ -58,7 +59,7 @@ export function relationshipPorts(refs: { id: string; relation: string; sourceSi
   for (const ref of refs) {
     ports[ref.id] = { source: { offset: 0, halfHeight: 4, width: 10, showSymbol: false }, target: { offset: 0, halfHeight: 4, width: 10, showSymbol: false } };
     for (const side of ["source", "target"] as const) {
-      const key = JSON.stringify([side === "source" ? ref.sourceSide || side : ref.targetSide || side, side === "source" ? ref.fromTable : ref.toTable, detail === "names" ? "header" : (side === "source" ? ref.fromFields[0] : ref.toFields[0])]);
+      const key = JSON.stringify([side === "source" ? ref.sourceSide || side : ref.targetSide || side, side === "source" ? ref.fromTable : ref.toTable, detail === "names" ? "header" : relationshipField(side === "source" ? ref.fromFields : ref.toFields)]);
       const types = groups.get(key) || new Map();
       const cardinality = ref.relation.split(":")[side === "source" ? 0 : 1];
       const connections = types.get(cardinality) || [];

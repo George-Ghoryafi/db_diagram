@@ -88,6 +88,7 @@ import { StorageRecords } from './StorageRecords';
 import { StorageNode, StoragePanel, StorageEditor, StorageLinkEditor } from './StorageUI';
 import { emptyStorage, readStorageModel, writeStorageModel, storageKinds, storageNodeId, storageNodeHeight, storageLinkIssue, storagePorts, type StorageModel, type StorageUnit, type StorageLink } from './storage-model';
 
+import { compositeEndpoints, relationshipField } from "./composite-relationships";
 import { CardinalityEditor } from "./CardinalityEditor";
 import { isMany, parseCardinality } from "./cardinality";
 import type { CheckRule } from "./checks";
@@ -185,8 +186,9 @@ const editorSetup = { foldGutter: true, lineNumbers: true, highlightActiveLine: 
 const palette = ["#316896", "#537bad", "#6d66a3", "#3c877c", "#bc8951"];
 function TableNode({ id, data, selected }: NodeProps) {
   const t = data.table as Table;
+  const tuples = (data.composites || []) as ReturnType<typeof compositeEndpoints>;
   const updateInternals = useUpdateNodeInternals();
-  useEffect(() => updateInternals(id), [id, data.detail, t.fields]);
+  useEffect(() => updateInternals(id), [id, data.detail, t.fields, data.composites]);
   const primaryKeys=new Set([...t.fields.filter(f=>f.pk).map(f=>f.name),...t.indexes.filter(i=>i.pk).flatMap(i=>i.columns.filter((c:any)=>c.type==="column").map((c:any)=>c.value))]);
   const foreignKeys=(data.foreignKeys || {}) as Record<string,string[]>;
   return <div className={"table-node "+(selected?"selected":"")}>
@@ -216,6 +218,12 @@ function TableNode({ id, data, selected }: NodeProps) {
         </div>
       </SchemaTooltip>;
     })}
+    {data.detail!=="names"&&tuples.map(tuple=><SchemaTooltip key={tuple.id} heading={<><Link2 size={14}/><b>Composite relationship</b><span>{tuple.fields.length} columns</span></>} content={<div className="composite-mappings"><p>These columns form one key. Cardinality applies to the complete tuple.</p>{tuple.references.map(ref=><div key={ref.id}><strong>{ref.name || 'Composite foreign key'}</strong>{ref.fromFields.map((field,index)=><div className="composite-pair" key={index}><code>{ref.fromTable}.{field}</code><ArrowUpRight size={12}/><code>{ref.toTable}.{ref.toFields[index]}</code></div>)}</div>)}</div>}>
+      <div className={'field composite-field ' + (tuple.fields.some(field=>((data.highlightFields as string[])||[]).includes(field))?'field-highlight':'')} onPointerEnter={()=>(data.onFieldHover as (field:string|null)=>void)(tuple.id)} onPointerLeave={()=>(data.onFieldHover as (field:string|null)=>void)(null)}>
+        <Handle type="target" position={Position.Left} id={tuple.id+'-in'} isConnectable={false}/><Handle type="source" position={Position.Right} id={tuple.id+'-out'} isConnectable={false}/><Handle type="source" position={Position.Left} id={tuple.id+'-out-left'} isConnectable={false}/><Handle type="target" position={Position.Right} id={tuple.id+'-in-right'} isConnectable={false}/>
+        <span className="composite-label" aria-label={'Composite key '+tuple.fields.join(', ')}>({tuple.fields.join(', ')})</span><Link2 size={11} className="composite-icon"/>
+      </div>
+    </SchemaTooltip>)}
     {data.detail!=="names"&&t.indexes.length>0&&<div className="index-row"><KeyRound size={11}/>{t.indexes.length} {t.indexes.length===1?"index":"indexes"}</div>}
   </div>;
 }
@@ -241,7 +249,7 @@ function GroupNode({ data }: NodeProps) {
 }
 const nodeTypes = {
   storage: memo(StorageNode),
-  table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
+  table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && a.data.composites === b.data.composites && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
   group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.focused === b.data.focused),
 };
 function ZoomPercentage() { return <>{Math.round(useViewport().zoom * 100)}%</>; }
@@ -260,10 +268,10 @@ function RelationshipEdge(props: EdgeProps) {
     adjusted[adjusted.length - 1] = { x: props.targetX, y: targetY };
     if (adjusted.length > 2) { adjusted[1].y = sourceY; adjusted[adjusted.length - 2].y = targetY; }
     const geometry = routeGeometry(adjusted, (props.data?.routeBounds || []) as TableBounds[]);
-    const storageLabel = props.data?.storageLink ? storageLabelPosition(adjusted, (props.data.routeBounds as TableBounds[]) || [], String(props.data.label || '').length * 6 + 12) : geometry.label;
+    const storageLabel = props.data?.storageLink ? storageLabelPosition(adjusted, (props.data.routeBounds as TableBounds[]) || [], String(props.data.label || '').length * 6 + 12) : (props.data?.branchLabel as RoutePoint | undefined) || geometry.label;
     const label = props.data?.explicitSelected && props.data?.accessPoint ? projectToRoute(adjusted, props.data.accessPoint as RoutePoint) : storageLabel;
     return [geometry.path, label.x, label.y] as const;
-  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route, props.data?.routeBounds, props.data?.accessPoint, props.data?.explicitSelected]);
+  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route, props.data?.routeBounds, props.data?.accessPoint, props.data?.explicitSelected, props.data?.branchLabel]);
   const storageLink = !!props.data?.storageLink;
   const parts = String(props.data?.relation || "").split(":");
   const highlighted = hovered || props.selected || !!props.data?.highlighted;
@@ -946,10 +954,10 @@ function Workspace() {
           return {
             id: n.id,
             width: n.measured?.width || 260,
-            height: n.measured?.height || 35 + fields.length * 30 + (table.indexes.length ? 25 : 0),
-            fields: fields.map((field, index) => ({ name: field.name, y: 33 + index * 30 + 15 })),
+            height: n.measured?.height || 35 + fields.length * 30 + (table.indexes.length ? 25 : 0) + (detail === "names" ? 0 : compositeEndpoints(model.refs, table.id).length * 30),
+            fields: [...fields.map(field => field.name), ...(detail === "names" ? [] : compositeEndpoints(model.refs, table.id).map(tuple => tuple.id))].map((name,index)=>({name,y:33+index*30+15})),
           };
-        }), [...model.refs, ...storage.links.filter(link => !storageLinkIssue(link, storage.units, model.tables)).map(link => ({ fromTable: link.from.node, fromFields: [link.from.port || 'header'], toTable: link.to.node, toFields: [link.to.port || 'header'], relation: '1:*' }))], model.groups, mode,
+        }), [...model.refs.map(ref=>({...ref,fromFields:[relationshipField(ref.fromFields)],toFields:[relationshipField(ref.toFields)]})), ...storage.links.filter(link => !storageLinkIssue(link, storage.units, model.tables)).map(link => ({ fromTable: link.from.node, fromFields: [link.from.port || 'header'], toTable: link.to.node, toFields: [link.to.port || 'header'], relation: '1:*' }))], model.groups, mode,
       );
       if (!current()) return;
       setSelected(""); setSelectedEdge(""); setEdgeAccessPoint(undefined); setFocusedGroup("");
@@ -971,7 +979,7 @@ function Workspace() {
     setTableId(table.id);setNoteField("");setNoteText(table.note || "");setError("");setModal("note");
   };
   useEffect(() => {
-    if (hoveredField && !model.tables.some(table => table.id === hoveredField.tableId && table.fields.some(field => field.name === hoveredField.field)) && !storage.units.some(unit => storageNodeId(unit.id) === hoveredField.tableId && storagePorts(unit).some(port => port.port === hoveredField.field))) setHoveredField(null);
+    if (hoveredField && !model.tables.some(table => table.id === hoveredField.tableId && (table.fields.some(field => field.name === hoveredField.field) || compositeEndpoints(model.refs, table.id).some(tuple => tuple.id === hoveredField.field))) && !storage.units.some(unit => storageNodeId(unit.id) === hoveredField.tableId && storagePorts(unit).some(port => port.port === hoveredField.field))) setHoveredField(null);
   }, [model, hoveredField]);
   const highlightedRefs = useMemo(() => highlightedRelationships(
     model.refs,
@@ -980,6 +988,7 @@ function Workspace() {
     selectedEdge,
     hoveredField,
   ), [model.refs, highlight, selected, selectedEdge, hoveredField]);
+  const compositeRows = useMemo(() => new Map(model.tables.map(table => [table.id, compositeEndpoints(model.refs, table.id)])), [model.tables, model.refs]);
   const tableData = useMemo(() => new Map(nodes.filter(n => n.type === "table").map((n) => {
     const t = n.data.table as Table;
     const keys = [
@@ -1005,6 +1014,7 @@ function Workspace() {
         detail,
         keys,
         foreignKeys:foreignKeyTargets(model.refs,t.id),
+        composites: compositeRows.get(t.id),
         onFieldHover: (field: string | null) => setHoveredField(current => field ? { tableId: t.id, field } : current?.tableId === t.id ? null : current),
         openRecords: () => { setTableId(t.id); setRecordFocus(undefined); setRecordHistory([]); setModal('records'); },
         applyColor: (color: string) => applyVisualColor('table', t.id, color),
@@ -1015,7 +1025,7 @@ function Workspace() {
             ...(r.toTable === t.id ? r.toFields : []),
           ]),
     }] as const;
-  })), [model, detail, highlightedRefs]);
+  })), [model, detail, highlightedRefs, compositeRows]);
   const storageData = useMemo(() => new Map(storage.units.map(unit => [storageNodeId(unit.id), {
     unit, detail, onEdit: () => openStore(unit), onRecords: (item?: string) => openStorageRecords(unit, item),
     onPortHover: (port: string | null) => setHoveredField(current => port ? { tableId: storageNodeId(unit.id), field: port } : current?.tableId === storageNodeId(unit.id) ? null : current),
@@ -1039,7 +1049,7 @@ function Workspace() {
                 .keys as string[]) || [],
             ).length *
               30 +
-            25)),
+            (detail === "names" ? 0 : (compositeRows.get(n.id)?.length || 0) * 30) + 25)),
         ),
       );
     return [
@@ -1066,7 +1076,7 @@ function Workspace() {
   const obstacles = useMemo(() => displayedNodes.map(n => ({
     ...n.position,
     width: n.measured?.width || 260,
-    height: n.measured?.height || (n.type === "storage" ? storageNodeHeight(n.data.unit as StorageUnit, detail === "names") : detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
+    height: n.measured?.height || (n.type === "storage" ? storageNodeHeight(n.data.unit as StorageUnit, detail === "names") : detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0) + (compositeRows.get(n.id)?.length || 0) * 30),
   })), [nodes, detail, tableData]);
   const canvasRefs = useMemo(() => [...model.refs.map(ref => ({ ...ref, storageLink: undefined as StorageLink | undefined })), ...storage.links.filter(link => !storageLinkIssue(link, storage.units, model.tables)).map(link => ({ id: 'storage-link:' + link.id, fromTable: link.from.node, fromFields: [link.from.port || 'header'], toTable: link.to.node, toFields: [link.to.port || 'header'], name: link.label || link.kind, color: '#127c80', relation: link.direction === 'both' ? '*:*' : '1:*', storageLink: link }))], [model.refs, model.tables, storage]);
   const attachments = useMemo(() => Object.fromEntries(canvasRefs.map(ref => {
@@ -1086,12 +1096,15 @@ function Workspace() {
       const handle = flow.getInternalNode(node.id)?.internals.handleBounds?.[source ? "source" : "target"]?.find(handle => handle.id === handleId);
       const fields = node.type === "table" ? visibleFields((node.data.table as Table).fields, detail, (node.data.keys as string[]) || []) : [];
       return { x: node.position.x + (handle ? handle.x + handle.width / 2 : side === "right" ? node.measured?.width || 260 : 0),
-        y: node.position.y + (handle ? handle.y + handle.height / 2 : detail === "names" ? 16.5 : 49 + Math.max(0, fields.findIndex(f => f.name === field)) * 30) };
+        y: node.position.y + (handle ? handle.y + handle.height / 2 : detail === "names" ? 16.5 : 49 + Math.max(0, [...fields.map(f => f.name), ...(compositeRows.get(node.id) || []).map(tuple => tuple.id)].indexOf(field)) * 30) };
     };
-    const source = endpoint(from, ref.fromFields[0], true), target = endpoint(to, ref.toFields[0], false);
+    const source = endpoint(from, relationshipField(ref.fromFields), true), target = endpoint(to, relationshipField(ref.toFields), false);
     source.y += ports[ref.id].source.offset;
     target.y += ports[ref.id].target.offset;
-    return [{ id: ref.id, source, target, ...attachments[ref.id] }];
+    const parts = ref.relation.split(':');
+    const sourceBundle = ref.storageLink ? undefined : JSON.stringify([ref.fromTable, relationshipField(ref.fromFields), parts[0], attachments[ref.id].sourceSide]);
+    const targetBundle = ref.storageLink ? undefined : JSON.stringify([ref.toTable, relationshipField(ref.toFields), parts[1], attachments[ref.id].targetSide]);
+    return [{ id: ref.id, source, target, sourceBundle, targetBundle, ...attachments[ref.id] }];
   });
   const routingKey = JSON.stringify({ routingRequests, obstacles });
   const draggingKey = nodes.filter(node => node.dragging).map(node => node.id).sort().join("|");
@@ -1105,8 +1118,8 @@ function Workspace() {
       id: r.id,
       source: r.fromTable,
       target: r.toTable,
-      sourceHandle: sourceHandle(r.id, r.fromFields[0]),
-      targetHandle: targetHandle(r.id, r.toFields[0]),
+      sourceHandle: sourceHandle(r.id, relationshipField(r.fromFields)),
+      targetHandle: targetHandle(r.id, relationshipField(r.toFields)),
       type: "relationship",
       markerEnd: r.storageLink ? { type: MarkerType.ArrowClosed, color: '#127c80', width: 13, height: 13 } : undefined,
       markerStart: r.storageLink?.direction === 'both' ? { type: MarkerType.ArrowClosed, color: '#127c80', width: 13, height: 13 } : undefined,
@@ -1119,6 +1132,7 @@ function Workspace() {
         onEdit: () => openStorageLink(r.storageLink),
         ports: ports[r.id],
         route: routing.sides?.[r.id] === `${attachments[r.id].sourceSide}:${attachments[r.id].targetSide}` ? relationshipRoutes[r.id] : undefined,
+        branchLabel: routing.labels?.[r.id],
         routeBounds: routing.tables,
         dragging: movingTables.has(r.fromTable) || movingTables.has(r.toTable),
         color: r.color,
@@ -1130,7 +1144,7 @@ function Workspace() {
         explicitSelected:active,
         showLabel: !!r.storageLink || (related && !!r.name),
         label:
-          r.name ||
+          (r.fromFields.length > 1 || r.toFields.length > 1) ? `${r.name ? r.name + " · " : ""}Composite (${r.fromFields.length} columns)` : r.name ||
           `${r.fromTable}.${r.fromFields.join(", ")} → ${r.toTable}.${r.toFields.join(", ")}`,
       },
       style: {
@@ -1140,7 +1154,7 @@ function Workspace() {
         strokeDasharray: r.storageLink ? "5 5" : undefined,
       },
     };
-  }), [canvasRefs, highlight, ports, relationshipRoutes, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables]);
+  }), [canvasRefs, highlight, ports, relationshipRoutes, routing.labels, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables]);
   const applyVisualColor = async (kind: 'table' | 'relationship' | 'group', id: string, color: string) => {
     const previous = latestCode.current;
     const next = await setVisualColor(previous, kind, id, color);

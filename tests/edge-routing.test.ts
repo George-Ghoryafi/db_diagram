@@ -101,3 +101,28 @@ test('storage labels use a clear segment instead of covering endpoint nodes', ()
   assert.equal(point.x,450);
   assert.equal(point.y,115);
 });
+
+test('same-attribute cables share a long trunk and fork near their destinations in either direction',async()=>{
+ const {routeRelationships}=await import('../src/edge-routing');
+ const tables=[{x:0,y:150,width:100,height:100},{x:500,y:0,width:100,height:100},{x:500,y:300,width:100,height:100}];
+ const requests=[{id:'a',source:{x:100,y:200},target:{x:500,y:50},sourceBundle:'parent.id:1:right'},{id:'b',source:{x:100,y:200},target:{x:500,y:350},sourceBundle:'parent.id:1:right'}];
+ for(const reversed of [false,true]){
+  const input=reversed?requests.map(ref=>({id:ref.id,source:ref.target,target:ref.source,targetBundle:ref.sourceBundle,sourceSide:'left' as const,targetSide:'right' as const})):requests;
+  const routes=routeRelationships(input,tables);
+  for(const ref of input){const route=routes[ref.id];assert.ok(route);assert.deepEqual(route[0],ref.source);assert.deepEqual(route.at(-1),ref.target);for(let i=1;i<route.length;i++)assert.ok(!tables.some(table=>crossesTable(route[i-1],route[i],table)));}
+  const aligned=(route:Point[])=>route.slice(1).flatMap((b,i)=>route[i].y===200&&b.y===200?[{min:Math.min(route[i].x,b.x),max:Math.max(route[i].x,b.x)}]:[]);
+  const a=aligned(routes.a!),b=aligned(routes.b!);
+  assert.ok(a.some(left=>b.some(right=>Math.min(left.max,right.max)-Math.max(left.min,right.min)>300)),'Shared stem reaches close to destination tables');
+ }
+});
+
+test('cable bundles respect obstacles and keep unrelated cardinalities separate',async()=>{
+ const {routeRelationships,branchLabelPosition}=await import('../src/edge-routing');
+ const tables=[{x:0,y:150,width:100,height:100},{x:500,y:0,width:100,height:100},{x:500,y:300,width:100,height:100},{x:250,y:150,width:100,height:100}];
+ const requests=[{id:'a',source:{x:100,y:200},target:{x:500,y:50},sourceBundle:'parent.id:1:right'},{id:'b',source:{x:100,y:200},target:{x:500,y:350},sourceBundle:'parent.id:1:right'},{id:'other',source:{x:100,y:210},target:{x:500,y:70},sourceBundle:'parent.id:*:right'}];
+ const routes=routeRelationships(requests,tables);
+ for(const ref of requests){const route=routes[ref.id];assert.ok(route);for(let i=1;i<route.length;i++)assert.ok(!tables.some(table=>crossesTable(route[i-1],route[i],table)));}
+ const a=[{x:100,y:200},{x:476,y:200},{x:476,y:50},{x:500,y:50}],b=[{x:100,y:200},{x:476,y:200},{x:476,y:350},{x:500,y:350}];
+ assert.deepEqual(branchLabelPosition(a,[b]),{x:476,y:125});
+ assert.deepEqual(branchLabelPosition(b,[a]),{x:476,y:275});
+});

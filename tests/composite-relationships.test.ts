@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { compositeEndpoints, relationshipField } from '../src/composite-relationships';
+import { highlightedRelationships, relationshipPorts } from '../src/canvas';
+import { parseSchema } from '../src/schema';
+const source=`Table organizations {\n id uuid [pk]\n current_revision_id uuid\n}\nTable revisions {\n org_id uuid\n id uuid\n indexes {\n (org_id,id) [pk]\n }\n}\nRef current_revision: organizations.(id,current_revision_id) > revisions.(org_id,id)`;
+test('composite references attach to ordered tuple ports at both ends, preserving one constraint',()=>{
+ const model=parseSchema(source),ref=model.refs[0];
+ const from=compositeEndpoints(model.refs,'public.organizations'),to=compositeEndpoints(model.refs,'public.revisions');
+ assert.equal(model.refs.length,1);
+ assert.deepEqual(from[0].fields,['id','current_revision_id']);
+ assert.deepEqual(to[0].fields,['org_id','id']);
+ assert.equal(from[0].id,relationshipField(ref.fromFields));
+ assert.notEqual(from[0].id,ref.fromFields[0]);
+ assert.equal(from[0].references[0].id,to[0].references[0].id);
+ assert.equal(relationshipField(['id']),'id');
+ assert.deepEqual([...highlightedRelationships(model.refs,false,'','',{tableId:'public.organizations',field:from[0].id})],[ref.id]);
+ assert.deepEqual([...highlightedRelationships(model.refs,false,'','',{tableId:'public.organizations',field:'current_revision_id'})],[ref.id]);
+});
+test('tuple rows deduplicate shared keys without merging distinct ordered tuples or scalar symbols',()=>{
+ const ref=parseSchema(source).refs[0];
+ const refs=[ref,{...ref,id:'second'},{...ref,id:'reordered',fromFields:[...ref.fromFields].reverse()},{...ref,id:'scalar',fromFields:['id'],toFields:['org_id']}];
+ const rows=compositeEndpoints(refs,'public.organizations');
+ assert.equal(rows.length,2);
+ assert.equal(rows[0].references.length,2);
+ const ports=relationshipPorts(refs,'all');
+ assert.equal(ports[ref.id].source.offset,0);
+ assert.equal(ports.scalar.source.offset,0);
+ assert.equal(ports.scalar.source.showSymbol,true);
+ assert.equal(ports[ref.id].source.showSymbol,true);
+ const self={...ref,fromTable:'public.organizations',toTable:'public.organizations',toFields:ref.fromFields};
+ assert.equal(compositeEndpoints([self],'public.organizations')[0].references.length,1);
+});

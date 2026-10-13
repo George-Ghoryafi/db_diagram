@@ -1840,3 +1840,11 @@ button:disabled {
 .attribute-index svg { flex-shrink: 0; }
 .attribute-index small { display: block; font-size: 10px; color: #8b809c; margin-top: 3px; }
 .attribute-index > code { display: block; font-size: 10px; overflow-wrap: anywhere; margin-top: 3px; color: #79668e; }
+.composite-field { height: auto; min-height: 30px; padding-top: 6px; padding-bottom: 6px; background: #f5f7fa; border-top: 1px solid #e3e8ee; }
+.composite-label { min-width: 0; font-size: 10.5px; line-height: 1.5; font-weight: 650; color: #566476; overflow-wrap: anywhere; }
+.composite-icon { margin-left: auto; flex-shrink: 0; color: #8593a6; }
+.composite-mappings > p { color: #7b889a; font-size: 11px; }
+.composite-mappings > div { margin-top: 10px; }
+.composite-pair { display: grid; grid-template-columns: minmax(0,1fr) 12px minmax(0,1fr); align-items: center; gap: 6px; margin-top: 6px; padding: 7px; background: #f5f8fc; border: 1px solid #e5ebf3; border-radius: 4px; }
+.composite-pair code { font: 10px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; color: #567294; }
+.composite-pair svg { color: #899db7; }
