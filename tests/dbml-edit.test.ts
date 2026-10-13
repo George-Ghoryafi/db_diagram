@@ -103,3 +103,16 @@ Table other { id int [pk, note: 'Untouched'] }
  assert.equal(Parser.parse(newTableNote,'dbmlv2').schemas[0].tables[0].note,'A table note');
  await assert.rejects(setAttachedNote(source,'team','users','missing','Nope'),/Attribute not found/);
 });
+
+test('group colors preserve membership, notes, tables and references', async () => {
+  const source="Table users { id int [pk] }\nTable orders { user_id int [ref: > users.id] }\nTableGroup Identity [note: 'color: #ffffff'] {\n users\n orders\n}\nTableGroup Other { }\n";
+  let changed=await setVisualColor(source,'group','Identity','#e74c3c');
+  changed=await setVisualColor(changed,'group','Identity','#3498db');
+  const db=Parser.parse(changed,'dbmlv2');
+  assert.equal(db.schemas[0].tableGroups[0].color,'#3498db');
+  assert.equal(db.schemas[0].tableGroups[0].note,'color: #ffffff');
+  assert.equal(db.schemas[0].tableGroups[0].tables.length,2);
+  assert.equal(db.schemas[0].refs.length,1);
+  assert.ok(changed.includes('TableGroup Other { }'));
+  await assert.rejects(setVisualColor(source,'group','missing','#123456'),/no longer exists/);
+});

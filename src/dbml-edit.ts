@@ -144,14 +144,15 @@ export async function setAttachedNote(source:string,schema:string,tableName:stri
  return next;
 }
 
-export async function setVisualColor(source: string, kind: 'table' | 'relationship', id: string, color: string) {
+export async function setVisualColor(source: string, kind: 'table' | 'relationship' | 'group', id: string, color: string) {
   if (!/^#[\da-f]{6}$/i.test(color)) throw new Error('Enter a six-digit hex color, such as #326d94.');
   const { database } = await import('./schema');
   const db = database(source);
   const target: any = kind === 'table'
     ? db.schemas.flatMap(s => s.tables).find(t => `${t.schema.name}.${t.name}` === id)
+    : kind === 'group' ? db.schemas.flatMap(s => s.tableGroups).find(g => g.name === id)
     : db.schemas.flatMap(s => s.refs.map((r, i) => ({ ref: r, id: `${s.name}.ref${i}` }))).find(r => r.id === id)?.ref;
-  if (!target) throw new Error('The selected table or relationship no longer exists.');
+  if (!target) throw new Error('The selected table, group, or relationship no longer exists.');
   let from = target.token.start.offset, to = target.token.end.offset;
   let declaration = source.slice(from, to);
   const key = kind === 'table' ? 'headercolor' : 'color';
@@ -168,7 +169,7 @@ export async function setVisualColor(source: string, kind: 'table' | 'relationsh
     return next;
   }
   const tokens = [...declaration.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'''[\s\S]*?'''|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|#[\da-f]+|[A-Za-z_][\w]*|[{}\[\]:]/gi)].filter(t => !t[0].startsWith('//') && !t[0].startsWith('/*'));
-  const boundary = kind === 'table' ? (tokens.find(t => t[0] === '{')?.index ?? declaration.length) : declaration.length;
+  const boundary = kind !== 'relationship' ? (tokens.find(t => t[0] === '{')?.index ?? declaration.length) : declaration.length;
   const setting = tokens.findIndex((t, i) => t.index! < boundary && t[0].toLowerCase() === key && tokens[i + 1]?.[0] === ':');
   if (setting >= 0) {
     const value = tokens[setting + 2];
@@ -180,7 +181,7 @@ export async function setVisualColor(source: string, kind: 'table' | 'relationsh
       const content = declaration.slice(opening.index! + 1, closing.index).trim();
       declaration = declaration.slice(0, closing.index) + (content ? ', ' : '') + key + ': ' + color + declaration.slice(closing.index);
     } else {
-      const position = kind === 'table' ? boundary : (tokens.find(t => t[0] === '}')?.index ?? declaration.length);
+      const position = kind !== 'relationship' ? boundary : (tokens.find(t => t[0] === '}')?.index ?? declaration.length);
       declaration = declaration.slice(0, position) + ` [${key}: ${color}] ` + declaration.slice(position);
     }
   }

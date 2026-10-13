@@ -1,0 +1,23 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRoutePlanner, type RouteRequest, type RouteResult } from '../src/route-planner';
+const request = (key:string):RouteRequest => ({key,relationships:[],tables:[]});
+test('routing coalesces requests, pauses during dragging and discards stale results', () => {
+  const sent:RouteRequest[]=[],accepted:RouteResult[]=[];
+  const planner=createRoutePlanner(r=>sent.push(r),r=>accepted.push(r));
+  planner.update(request('first'),false);
+  for(let i=0;i<120;i++)planner.update(request('drag'+i),true);
+  assert.equal(sent.length,1,'Dragging dispatches no searches');
+  planner.receive({key:'first',routes:{}});
+  assert.equal(accepted.length,0,'Pre-drag result cannot overwrite moving geometry');
+  assert.equal(sent.length,1);
+  planner.update(request('dropped'),false);
+  planner.update(request('resized'),false);
+  planner.update(request('final'),false);
+  assert.equal(sent.length,2,'Only one worker search is in flight');
+  planner.receive({key:'dropped',routes:{}});
+  assert.equal(accepted.length,0);
+  assert.equal(sent.at(-1)?.key,'final','Intermediate requests are skipped');
+  planner.receive({key:'final',routes:{}});
+  assert.deepEqual(accepted.map(r=>r.key),['final']);
+});

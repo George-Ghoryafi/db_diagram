@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { routeRelationship, routeRelationships, routeGeometry, type TableBounds, type Point as RoutePoint } from "./edge-routing";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { routeGeometry, type TableBounds, type Point as RoutePoint } from "./edge-routing";
+import { useRelationshipRoutes } from "./use-relationship-routes";
 import { DiagramSkeleton } from "./DiagramSkeleton";
 import { AgentSetup } from "./AgentSetup";
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -160,6 +161,9 @@ function download(name: string, text: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+const SchemaEditor = memo(CodeMirror);
+const editorExtensions = [dbmlLanguage, dbmlColors];
+const editorSetup = { foldGutter: true, lineNumbers: true, highlightActiveLine: true };
 const palette = ["#326d94", "#537bad", "#6d66a3", "#3c877c", "#bc8951"];
 function TableNode({ id, data, selected }: NodeProps) {
   const t = data.table as Table;
@@ -204,44 +208,49 @@ function GroupNode({ data }: NodeProps) {
         background: `color-mix(in srgb, ${String(data.color)} 6%, transparent)`,
       }}
     >
+      <div className="group-title-tools nodrag nopan">
       <button type="button" className="group-focus-button nodrag nopan" aria-label={`Focus group ${String(data.name)}`} aria-pressed={!!data.focused}
         style={{ color: `color-mix(in srgb, ${String(data.color)} 45%, #243c57)` }}
         onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.onFocus as () => void)(); }}>
         <Layers size={12} />{String(data.name)}
       </button>
+      <AppearanceSettings label={`${String(data.name)} group color`} color={String(data.color)} onApply={data.applyColor as (color: string) => Promise<void>} />
+      </div>
     </div>
   );
 }
-const nodeTypes = { table: TableNode, group: GroupNode };
+const nodeTypes = {
+  table: memo(TableNode, (a, b) => a.id === b.id && a.data === b.data && a.selected === b.selected),
+  group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.focused === b.data.focused),
+};
+function ZoomPercentage() { return <>{Math.round(useViewport().zoom * 100)}%</>; }
 function RelationshipEdge(props: EdgeProps) {
+  const [hovered, setHovered] = useState(false);
   const ports = props.data?.ports as { source: RelationshipPort; target: RelationshipPort };
   const sourceY = props.sourceY + (ports?.source.offset || 0);
   const targetY = props.targetY + (ports?.target.offset || 0);
   const direction = relationshipFlow(String(props.data?.relation));
   const [path, labelX, labelY] = useMemo(() => {
     const planned = props.data?.route as RoutePoint[] | null | undefined;
-    const points = planned || routeRelationship(
-      { x: props.sourceX, y: sourceY },
-      { x: props.targetX, y: targetY },
-      (props.data?.obstacles || []) as TableBounds[],
-    );
-    if (!points) return getSmoothStepPath({ ...props, sourceY, targetY });
+    if (!planned || props.data?.dragging || (planned.length < 3 && sourceY !== targetY)) return getSmoothStepPath({ ...props, sourceY, targetY });
+    const points = planned;
     const adjusted = points.map(point => ({ ...point }));
     adjusted[0] = { x: props.sourceX, y: sourceY };
     adjusted[adjusted.length - 1] = { x: props.targetX, y: targetY };
     if (adjusted.length > 2) { adjusted[1].y = sourceY; adjusted[adjusted.length - 2].y = targetY; }
     const geometry = routeGeometry(adjusted);
     return [geometry.path, geometry.label.x, geometry.label.y] as const;
-  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.obstacles, props.data?.route]);
+  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route]);
   const parts = String(props.data?.relation || "").split(":");
-  const highlighted = props.selected || !!props.data?.highlighted;
+  const highlighted = hovered || props.selected || !!props.data?.highlighted;
+  const stroke = String(props.data?.color || (highlighted ? "#3273dc" : props.style?.stroke || "#93a2b3"));
   return (
-    <>
+    <g className={hovered ? "edge-hovered" : undefined} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>
       <BaseEdge
         id={props.id}
         className={`relationship-line flow-${direction}`}
         path={path}
-        style={props.style}
+        style={{ ...props.style, stroke, strokeWidth: highlighted ? 2.5 : props.style?.strokeWidth }}
         interactionWidth={10}
       />
       {[
@@ -256,12 +265,12 @@ function RelationshipEdge(props: EdgeProps) {
             ? `M ${x + direction * 2} ${y - (port?.halfHeight || 6)} L ${x + direction * (port?.width || 15)} ${y} L ${x + direction * 2} ${y + (port?.halfHeight || 6)} M ${x + direction * 2} ${y} L ${x + direction * (port?.width || 15)} ${y}`
             : `M ${x + direction * ((port?.width || 15) / 2)} ${y - (port?.halfHeight || 6)} L ${x + direction * ((port?.width || 15) / 2)} ${y + (port?.halfHeight || 6)}`}
           fill="none"
-          stroke={String(props.style?.stroke || (highlighted ? "#3273dc" : "#748699"))}
+          stroke={stroke}
           strokeWidth={Math.min(1.5, (port?.halfHeight || 6) * .4)}
           pointerEvents="none"
         />
       ))}
-      {highlighted && direction === "both" && <g className="relationship-particles" fill={String(props.style?.stroke || "#3273dc")}>
+      {highlighted && direction === "both" && <g className="relationship-particles" fill={stroke}>
         {["0;1", "1;0"].map(points => <circle key={points} r={2.4}><animateMotion path={path} dur="3s" repeatCount="indefinite" keyPoints={points} keyTimes="0;1" calcMode="linear" /></circle>)}
       </g>}
       <EdgeLabelRenderer>
@@ -279,10 +288,10 @@ function RelationshipEdge(props: EdgeProps) {
           </span>
         )}
       </EdgeLabelRenderer>
-    </>
+    </g>
   );
 }
-const edgeTypes = { relationship: RelationshipEdge };
+const edgeTypes = { relationship: memo(RelationshipEdge) };
 const initialExampleLayout = exampleLayoutForCanvas(
   window.innerWidth - Math.max(280, Math.min(400, window.innerWidth * 0.3)),
   window.innerHeight - 80,
@@ -356,7 +365,6 @@ function Workspace() {
   }, [doc?.name, activeBundle, bundles, loading]);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
-  const viewport = useViewport();
   const nodesInitialized = nodes.length > 0 && nodes.every(node => !!node.measured?.width && !!node.measured?.height);
   const saved = useRef(""),
     latestCode = useRef(""),
@@ -907,14 +915,13 @@ function Workspace() {
     if(!table){setError("Create a table before attaching a note.");return;}
     setTableId(table.id);setNoteField("");setNoteText(table.note || "");setError("");setModal("note");
   };
-  const highlightedRefs = highlightedRelationships(
+  const highlightedRefs = useMemo(() => highlightedRelationships(
     model.refs,
     highlight,
     selected,
     selectedEdge,
-  );
-  const displayedNodes = nodes.map((n) => {
-    if (n.type !== "table") return n;
+  ), [model.refs, highlight, selected, selectedEdge]);
+  const tableData = useMemo(() => new Map(nodes.filter(n => n.type === "table").map((n) => {
     const t = n.data.table as Table;
     const keys = [
       ...model.refs.flatMap((r) =>
@@ -932,12 +939,9 @@ function Workspace() {
             .map((c: any) => c.value),
         ),
     ];
-    return {
-      ...n,
-      selected: n.id === selected,
-      zIndex: 2,
-      data: {
+    return [n.id, {
         ...n.data,
+        table: t,
         detail,
         keys,
         foreignKeys:foreignKeyTargets(model.refs,t.id),
@@ -949,10 +953,10 @@ function Workspace() {
             ...(r.fromTable === t.id ? r.fromFields : []),
             ...(r.toTable === t.id ? r.toFields : []),
           ]),
-      },
-    };
-  });
-  const groupNodes: Node[] = model.groups.flatMap((g) => {
+    }] as const;
+  })), [model, detail, highlightedRefs]);
+  const displayedNodes = useMemo(() => nodes.map(n => ({ ...n, selected: n.id === selected, zIndex: 2, data: tableData.get(n.id) || n.data })), [nodes, selected, tableData]);
+  const groupNodes: Node[] = useMemo(() => model.groups.flatMap((g) => {
     const members = nodes.filter((n) => g.tables.includes(n.id));
     if (!members.length) return [];
     const x = Math.min(...members.map((n) => n.position.x)) - 22,
@@ -978,7 +982,7 @@ function Workspace() {
         id: "group:" + g.name,
         type: "group",
         position: { x, y },
-        data: { name: g.name, color: g.color || "#537bad", focused: focusedGroup === g.name, onFocus: () => {
+        data: { name: g.name, color: g.color || "#537bad", applyColor: (color: string) => applyVisualColor('group', g.name, color), focused: focusedGroup === g.name, onFocus: () => {
           setFocusedGroup(g.name); setSelected(""); setSelectedEdge("");
           const group = flow.getNode("group:" + g.name);
           if (group) void fitDiagram({ nodes: [group], duration: 400, padding: 0.12, maxZoom: 1.1 });
@@ -993,13 +997,13 @@ function Workspace() {
         zIndex: focusedGroup === g.name ? 1 : 0,
       },
     ];
-  });
-  const obstacles = displayedNodes.map(n => ({
+  }), [nodes, model.groups, detail, tableData, focusedGroup]);
+  const obstacles = useMemo(() => displayedNodes.map(n => ({
     ...n.position,
     width: n.measured?.width || 260,
     height: n.measured?.height || (detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
-  }));
-  const ports = relationshipPorts(model.refs, detail);
+  })), [nodes, detail, tableData]);
+  const ports = useMemo(() => relationshipPorts(model.refs, detail), [model.refs, detail]);
   const routingRequests = model.refs.flatMap(ref => {
     const from = displayedNodes.find(n => n.id === ref.fromTable), to = displayedNodes.find(n => n.id === ref.toTable);
     if (!from || !to) return [];
@@ -1016,8 +1020,11 @@ function Workspace() {
     return [{ id: ref.id, source, target }];
   });
   const routingKey = JSON.stringify({ routingRequests, obstacles });
-  const relationshipRoutes = useMemo(() => routeRelationships(routingRequests, obstacles), [routingKey]);
-  const edges = model.refs.map((r) => {
+  const draggingKey = nodes.filter(node => node.dragging).map(node => node.id).sort().join("|");
+  const movingTables = useMemo(() => new Set(draggingKey.split("|")), [draggingKey]);
+  const routing = useRelationshipRoutes({ key: routingKey, relationships: routingRequests, tables: obstacles }, !!draggingKey);
+  const relationshipRoutes = routing.routes;
+  const edges = useMemo(() => model.refs.map((r) => {
     const active = r.id === selectedEdge;
     const related = highlightedRefs.has(r.id);
     return {
@@ -1035,7 +1042,7 @@ function Workspace() {
       data: {
         ports: ports[r.id],
         route: relationshipRoutes[r.id],
-        obstacles,
+        dragging: movingTables.has(r.fromTable) || movingTables.has(r.toTable),
         color: r.color,
         accessPoint: active ? edgeAccessPoint : undefined,
         applyColor: (color: string) => applyVisualColor('relationship', r.id, color),
@@ -1053,8 +1060,8 @@ function Workspace() {
         opacity: 1,
       },
     };
-  });
-  const applyVisualColor = async (kind: 'table' | 'relationship', id: string, color: string) => {
+  }), [model.refs, ports, relationshipRoutes, selectedEdge, highlightedRefs, selected, edgeAccessPoint, movingTables]);
+  const applyVisualColor = async (kind: 'table' | 'relationship' | 'group', id: string, color: string) => {
     const previous = latestCode.current;
     const next = await setVisualColor(previous, kind, id, color);
     if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen settings and try again.');
@@ -1256,18 +1263,14 @@ function Workspace() {
                     DBML syntax <ArrowUpRight size={11} />
                   </a>
                 </div>
-                <CodeMirror
+                <SchemaEditor
                   ref={editorRef}
                   value={code}
                   height="100%"
                   theme="dark"
-                  extensions={[dbmlLanguage, dbmlColors]}
+                  extensions={editorExtensions}
                   onChange={change}
-                  basicSetup={{
-                    foldGutter: true,
-                    lineNumbers: true,
-                    highlightActiveLine: true,
-                  }}
+                  basicSetup={editorSetup}
                   aria-label="DBML schema editor"
                 />
                 <div className="editor-bottom">
@@ -1377,6 +1380,7 @@ function Workspace() {
           {loading && <div className="canvas-loading" role="status" aria-live="polite">
             <DiagramSkeleton /><div className="loading-caption"><strong>Loading your diagram</strong><span>Getting your schema and saved layout ready…</span></div>
           </div>}
+          {routing.error && !loading && <div className="layout-progress" role="alert">{routing.error}</div>}
           {arranging && !loading && <div className="layout-progress" role="status"><LoaderCircle size={14} aria-hidden="true" />Arranging tables…</div>}
           {!doc && !loading && error && <div className="empty-bundle"><AlertCircle size={28} /><h2>Could not load your workspace</h2><p>{error}</p><button className="primary" onClick={() => window.location.reload()}>Try again</button></div>}
           {!doc && !loading && !error && (
@@ -1490,6 +1494,7 @@ function Workspace() {
             snapToGrid={snap}
             snapGrid={[20, 20]}
             onNodeDragStop={persistLayout}
+            onSelectionDragStop={persistLayout}
             minZoom={0.05}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
@@ -1523,7 +1528,7 @@ function Workspace() {
               aria-label="Reset zoom to 100%"
               onClick={() => flow.zoomTo(1, { duration: 150 })}
             >
-              {Math.round(viewport.zoom * 100)}%
+              <ZoomPercentage />
             </button>
             <button
               title="Zoom in"
