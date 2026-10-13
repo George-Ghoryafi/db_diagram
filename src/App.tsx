@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { routeRelationship, routeGeometry, type TableBounds } from "./edge-routing";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -199,7 +200,16 @@ function GroupNode({ data }: NodeProps) {
 }
 const nodeTypes = { table: TableNode, group: GroupNode };
 function RelationshipEdge(props: EdgeProps) {
-  const [path, labelX, labelY] = getSmoothStepPath(props);
+  const [path, labelX, labelY] = useMemo(() => {
+    const points = routeRelationship(
+      { x: props.sourceX, y: props.sourceY },
+      { x: props.targetX, y: props.targetY },
+      (props.data?.obstacles || []) as TableBounds[],
+    );
+    if (!points) return getSmoothStepPath(props);
+    const geometry = routeGeometry(points);
+    return [geometry.path, geometry.label.x, geometry.label.y] as const;
+  }, [props.sourceX, props.sourceY, props.targetX, props.targetY, props.data?.obstacles]);
   const parts = String(props.data?.relation || "").split(":");
   const highlighted = props.selected || !!props.data?.highlighted;
   return (
@@ -932,6 +942,11 @@ function Workspace() {
     ];
   });
   const selectedRef = model.refs.find((r) => r.id === selectedEdge);
+  const obstacles = displayedNodes.map(n => ({
+    ...n.position,
+    width: n.measured?.width || 260,
+    height: n.measured?.height || (detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
+  }));
   const edges = model.refs.map((r) => {
     const active = r.id === selectedEdge;
     const related = highlightedRefs.has(r.id);
@@ -948,6 +963,7 @@ function Workspace() {
       animated: active || related,
       interactionWidth: 24,
       data: {
+        obstacles,
         relation: r.relation,
         highlighted: related,
         explicitSelected:active,
