@@ -37,7 +37,7 @@ test("sticky notes keep braces, quotes and multiline text; edit only the top-lev
 });
 
 import { arrangeTables, type Arrangement } from "../src/layout";
-test("all layout modes handle cyclic/disconnected graphs and avoid table overlap", () => {
+test("all layout modes handle cyclic/disconnected graphs and avoid table overlap", async () => {
   const items = [
     { id: "a", width: 235, height: 500 },
     { id: "b", width: 235, height: 140 },
@@ -55,7 +55,7 @@ test("all layout modes handle cyclic/disconnected graphs and avoid table overlap
     "snowflake",
     "compact",
   ] as Arrangement[]) {
-    const ps = arrangeTables(items, refs, [{ tables: ["a", "b"] }], mode);
+    const ps = await arrangeTables(items, refs, [{ tables: ["a", "b"] }], mode);
     assert.equal(Object.keys(ps).length, items.length);
     for (const i of items) {
       assert(Number.isFinite(ps[i.id].x) && Number.isFinite(ps[i.id].y));
@@ -72,7 +72,7 @@ test("all layout modes handle cyclic/disconnected graphs and avoid table overlap
       }
     }
   }
-  assert.deepEqual(arrangeTables([], [], [], "compact"), {});
+  assert.deepEqual(await arrangeTables([], [], [], "compact"), {});
 });
 
 import { highlightedRelationships } from "../src/canvas";
@@ -107,4 +107,63 @@ test('foreign-key indicators respect relationship direction and composite column
  assert.deepEqual(foreignKeyTargets(refs,'lines'),{order_id:['orders.id'],version:['orders.version']});
  const self=[{fromTable:'users',fromFields:['parent_id'],toTable:'users',toFields:['id'],relation:'*:1'}];
  assert.deepEqual(foreignKeyTargets(self,'users'),{parent_id:['users.id']});
+});
+
+test("left-right puts referenced parents before dependents and aligns siblings", async () => {
+  const items = ["root", "a", "b", "leaf"].map(id => ({ id, width: 260, height: id === "root" ? 1100 : 140 }));
+  const positions = await arrangeTables(items, [
+    { fromTable: "a", toTable: "root", relation: "*:1" },
+    { fromTable: "root", toTable: "b", relation: "1:*" },
+    { fromTable: "leaf", toTable: "a", relation: "*:1" },
+  ], [], "left-right");
+  assert(positions.root.x < positions.a.x);
+  assert.equal(positions.a.x, positions.b.x);
+  assert(positions.a.x < positions.leaf.x);
+});
+
+test("compact fills columns independently instead of leaving tall-table row gaps", async () => {
+  const items = Array.from({ length: 9 }, (_, i) => ({ id: String(i), width: i === 0 ? 500 : 260, height: i === 0 ? 1100 : 100 }));
+  const positions = await arrangeTables(items, [], [], "compact");
+  assert(positions[5].y < positions[4].y);
+  assert.equal(positions[1].x, positions[5].x);
+  assert(positions[1].x >= positions[0].x + 500 + 50);
+  assert.equal(new Set(Object.values(positions).map(p => p.x)).size, 4);
+});
+
+test("pipeline orders stages by dependency and stacks mixed-size group members", async () => {
+  const items = ["parent", "sibling", "child", "other", "ungrouped"].map((id, i) => ({ id, width: 260 + i * 70, height: 180 + i * 100, fields: [{ name: "id", y: 48 }] }));
+  const refs = [
+    { fromTable: "child", toTable: "parent", fromFields: ["id"], toFields: ["id"], relation: "*:1" },
+    { fromTable: "other", toTable: "child", relation: "*:1" },
+    { fromTable: "ungrouped", toTable: "parent", relation: "*:1" },
+    { fromTable: "missing", toTable: "parent", relation: "*:1" },
+  ];
+  const positions = await arrangeTables(items, refs, [{ tables: ["child", "other", "missing"] }, { tables: ["parent", "sibling", "child"] }], "pipeline");
+  assert.equal(Object.keys(positions).length, items.length);
+  assert(positions.parent.x < positions.child.x);
+  assert.equal(positions.parent.x, positions.sibling.x);
+  assert.equal(positions.child.x, positions.other.x);
+  assert(positions.sibling.y >= positions.parent.y + 180 + 28);
+});
+
+test("all layouts handle a dense 15-table graph with field ports, cycles and very tall tables", async () => {
+  const counts = [35, 10, 4, 13, 17, 6, 3, 7, 4, 11, 5, 7, 4, 9, 4];
+  const items = counts.map((count, i) => ({ id: String(i), width: 260 + i % 3 * 20, height: 60 + count * 30, fields: Array.from({ length: count }, (_, f) => ({ name: "field" + f, y: 48 + f * 30 })) }));
+  const pairs = [[1,2],[1,3],[2,14],[2,11],[3,3],[3,11],[3,14],[3,14],[4,8],[4,11],[4,14],[5,12],[5,1],[6,0],[7,14],[7,11],[8,14],[8,11],[9,14],[9,14],[9,11],[10,11],[10,14],[11,14],[11,14],[11,3],[12,4],[12,3],[13,14],[14,0]];
+  const refs = pairs.map(([from, to]) => ({ fromTable: String(from), toTable: String(to), fromFields: ["field1", "field2"], toFields: ["field0", "field1"], relation: "*:1" }));
+  const groups = [[0,14,13,6],[11,10,9,7],[2,3,1],[8,4,12,5]].map(ids => ({ tables: ids.map(String) }));
+  const original = JSON.stringify({ items, refs, groups });
+  for (const mode of ["left-right", "pipeline", "snowflake", "compact"] as Arrangement[]) {
+    const positions = await arrangeTables(items, refs, groups, mode);
+    assert.equal(Object.keys(positions).length, items.length);
+    for (let i = 0; i < items.length; i++) {
+      const a = items[i], p = positions[a.id];
+      assert(Number.isFinite(p.x) && Number.isFinite(p.y));
+      for (const b of items.slice(i + 1)) {
+        const q = positions[b.id];
+        assert(p.x + a.width <= q.x || q.x + b.width <= p.x || p.y + a.height <= q.y || q.y + b.height <= p.y, `${mode}: ${a.id}/${b.id} overlap`);
+      }
+    }
+  }
+  assert.equal(JSON.stringify({ items, refs, groups }), original);
 });

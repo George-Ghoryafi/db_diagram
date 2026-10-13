@@ -313,6 +313,10 @@ function Workspace() {
     [canvasSearch, setCanvasSearch] = useState(""),
     [noteText, setNoteText] = useState(""),
     [noteField, setNoteField] = useState("");
+  const [arranging, setArranging] = useState(false);
+  const layoutRun = useRef(0);
+  const layoutContext = useRef({ id: doc?.id, detail });
+  layoutContext.current = { id: doc?.id, detail };
   const [cloudAvailable, setCloudAvailable] = useState(false);
   const selectionReady = useRef(false);
   const [previousSelection] = useState<{ id?: string; bundle?: string }>(() => {
@@ -393,7 +397,7 @@ function Workspace() {
       bounds,
       canvas.clientWidth,
       canvas.clientHeight,
-      0.15,
+      0.05,
       options.maxZoom ?? 2,
       options.padding ?? 0.12,
     );
@@ -739,13 +743,10 @@ function Workspace() {
   const persistLayout = () => {
     if (!doc) return;
     clearTimeout(layoutTimer.current);
+    const layout = {...doc.layout,...Object.fromEntries(
+      flow.getNodes().filter(n => n.type === "table").map(n => [n.id, n.position]),
+    )};
     layoutTimer.current = setTimeout(() => {
-      const layout = {...doc.layout,...Object.fromEntries(
-        flow
-          .getNodes()
-          .filter((n) => n.type === "table")
-          .map((n) => [n.id, n.position]),
-      )};
       api("/schemas/" + doc.id + "/layout", { layout }, "PUT").catch((e) =>
         setError(e.message),
       );
@@ -850,31 +851,39 @@ function Workspace() {
       await apply(next);
     }catch(e){setError((e as Error).message);}
   };
-  const arrange = (mode: Arrangement = arrangement) => {
-    const positions = arrangeTables(
-      nodes
-        .filter((n) => n.type === "table")
-        .map((n) => ({
-          id: n.id,
-          width: 260,
-          height: 33 + (n.data.table as Table).fields.length * 30 + 25,
-        })),
-      model.refs,
-      model.groups,
-      mode,
-    );
-    const right =
-      Math.max(0, ...Object.values(positions).map((p) => p.x)) + 350;
-    setNodes((ns) =>
-      ns.map((n, i) => ({
-        ...n,
-        position: positions[n.id] || { x: right, y: 100 + i * 200 },
-      })),
-    );
-    setTimeout(() => {
-      fitDiagram({ includeHiddenNodes: true, duration: 400, padding: 0.15 });
-      persistLayout();
-    }, 100);
+  const arrange = async (mode: Arrangement = arrangement) => {
+    const run = ++layoutRun.current;
+    const originalCode = latestCode.current;
+    const originalId = doc?.id;
+    const current = () => run === layoutRun.current && originalCode === latestCode.current && originalId === layoutContext.current.id && detail === layoutContext.current.detail;
+    setArranging(true);
+    setError("");
+    try {
+      const positions = await arrangeTables(
+        flow.getNodes().filter(n => n.type === "table").map(n => {
+          const table = n.data.table as Table;
+          const fields = visibleFields(table.fields, detail, (displayedNodes.find(d => d.id === n.id)?.data.keys as string[]) || []);
+          return {
+            id: n.id,
+            width: n.measured?.width || 260,
+            height: n.measured?.height || 35 + fields.length * 30 + (table.indexes.length ? 25 : 0),
+            fields: fields.map((field, index) => ({ name: field.name, y: 33 + index * 30 + 15 })),
+          };
+        }), model.refs, model.groups, mode,
+      );
+      if (!current()) return;
+      setSelected(""); setSelectedEdge(""); setEdgeAccessPoint(undefined);
+      setNodes(ns => ns.map(n => positions[n.id] ? { ...n, position: positions[n.id], selected: false } : n));
+      setTimeout(() => {
+        if (!current()) return;
+        fitDiagram({ includeHiddenNodes: true, duration: 400, padding: 0.15 });
+        persistLayout();
+      }, 100);
+    } catch (e) {
+      if (current()) setError("Could not arrange tables: " + (e as Error).message);
+    } finally {
+      if (run === layoutRun.current) setArranging(false);
+    }
   };
   const openNote = () => {
     const table=model.tables.find(t=>t.id===selected)||model.tables[0];
@@ -930,20 +939,20 @@ function Workspace() {
     if (!members.length) return [];
     const x = Math.min(...members.map((n) => n.position.x)) - 22,
       y = Math.min(...members.map((n) => n.position.y)) - 38;
-    const right = Math.max(...members.map((n) => n.position.x + 260)),
+    const right = Math.max(...members.map((n) => n.position.x + (n.measured?.width || 260))),
       bottom = Math.max(
         ...members.map(
           (n) =>
             n.position.y +
-            33 +
+            (n.measured?.height || (33 +
             visibleFields(
               (n.data.table as Table).fields,
               detail,
               (displayedNodes.find((d) => d.id === n.id)?.data
                 .keys as string[]) || [],
             ).length *
-              27 +
-            25,
+              30 +
+            25)),
         ),
       );
     return [
@@ -1419,13 +1428,13 @@ function Workspace() {
             }}
             deleteKeyCode={null}
             zoomOnDoubleClick={false}
-            nodesDraggable={!panMode}
+            nodesDraggable={!panMode && !arranging}
             panOnDrag={panMode ? [0, 1, 2] : [1, 2]}
             selectionOnDrag={!panMode}
             snapToGrid={snap}
             snapGrid={[20, 20]}
             onNodeDragStop={persistLayout}
-            minZoom={0.15}
+            minZoom={0.05}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
           >
@@ -1497,7 +1506,8 @@ function Workspace() {
           >
             <button
               title="Auto arrange (2)"
-              aria-label="Auto arrange"
+              aria-label={arranging ? "Arranging tables" : "Auto arrange"}
+              disabled={arranging}
               onClick={() => setModal("arrange")}
             >
               <LayoutGrid size={18} />
@@ -1660,13 +1670,13 @@ function Workspace() {
                         id: "pipeline",
                         name: "Pipeline",
                         description:
-                          "Organize table groups as vertical stages.",
+                          "Order table groups by dependencies, with tables stacked inside each stage.",
                       },
                       {
                         id: "snowflake",
                         name: "Snowflake",
                         description:
-                          "Put the most connected table in the center.",
+                          "Cluster related tables around the most connected tables.",
                       },
                       {
                         id: "compact",
@@ -1677,9 +1687,10 @@ function Workspace() {
                   ).map((option) => (
                     <button
                       key={option.id}
+                      disabled={arranging}
                       onClick={() => {
                         setArrangement(option.id);
-                        arrange(option.id);
+                        void arrange(option.id);
                         setModal("");
                       }}
                     >
