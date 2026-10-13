@@ -200,7 +200,7 @@ function GroupNode({ data }: NodeProps) {
     <div
       className={"group-node" + (data.focused ? " is-focused" : "")}
       style={{
-        borderColor: `color-mix(in srgb, ${String(data.color)} 65%, #243c57)`,
+        borderColor: `color-mix(in srgb, ${String(data.color)} 35%, #243c57)`,
         background: `color-mix(in srgb, ${String(data.color)} 6%, white)`,
       }}
     >
