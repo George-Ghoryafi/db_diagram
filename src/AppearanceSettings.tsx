@@ -17,6 +17,7 @@ export function AppearanceSettings({ label, color, onApply }: { label: string; c
   }, [open, error]);
   useEffect(() => {
     if (!open) return;
+    popup.current?.querySelector<HTMLButtonElement>('button')?.focus();
     const outside = (e: PointerEvent) => { if (!trigger.current?.contains(e.target as Node) && !popup.current?.contains(e.target as Node)) setOpen(false); };
     const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); trigger.current?.focus(); } };
     const moved = () => setOpen(false);
@@ -26,7 +27,7 @@ export function AppearanceSettings({ label, color, onApply }: { label: string; c
     return () => { document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true); window.removeEventListener('resize', moved); };
   }, [open]);
   return <>
-    <button ref={trigger} type="button" className="appearance-trigger nodrag nopan" aria-label={label + ' settings'} title={label + ' settings'} aria-expanded={open} aria-controls={open ? id : undefined} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setValue(color); setError(''); setOpen(!open); }}><Settings size={15} /></button>
+    <button ref={trigger} type="button" className="appearance-trigger nodrag nopan" aria-label={label + ' settings'} title={label + ' settings'} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setValue(color); setError(''); setOpen(!open); }}><Settings size={15} /></button>
     {open && createPortal(<div ref={popup} id={id} role="dialog" className="appearance-settings nodrag nopan" aria-label={label + ' settings'} style={position} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
       <form onSubmit={async e => {
         e.preventDefault();

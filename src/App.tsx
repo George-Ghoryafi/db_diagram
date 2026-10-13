@@ -1029,7 +1029,7 @@ function Workspace() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (modal || el.closest("input,textarea,select,[contenteditable=true]"))
+      if (modal || el.closest("input,textarea,select,[contenteditable=true],.appearance-settings"))
         return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
