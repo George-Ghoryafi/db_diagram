@@ -210,35 +210,24 @@ function RelationshipEdge(props: EdgeProps) {
         style={props.style}
         interactionWidth={24}
       />
-      {highlighted && (
-        <circle
-          className="edge-motion-dot"
-          r={3}
-          fill="#3273dc"
+      {[
+        { x: props.sourceX, y: props.sourceY, direction: 1, cardinality: parts[0] },
+        { x: props.targetX, y: props.targetY, direction: -1, cardinality: parts[1] },
+      ].map(({ x, y, direction, cardinality }, index) => (
+        <path
+          key={index}
+          className="edge-cardinality"
+          aria-label={cardinality === "*" ? "Many" : "One"}
+          d={cardinality === "*"
+            ? `M ${x + direction * 2} ${y - 6} L ${x + direction * 15} ${y} L ${x + direction * 2} ${y + 6} M ${x + direction * 2} ${y} L ${x + direction * 15} ${y}`
+            : `M ${x + direction * 8} ${y - 6} L ${x + direction * 8} ${y + 6}`}
+          fill="none"
+          stroke={highlighted ? "#3273dc" : "#748699"}
+          strokeWidth={1.5}
           pointerEvents="none"
-        >
-          <animateMotion dur="2s" repeatCount="indefinite" path={path} />
-        </circle>
-      )}
+        />
+      ))}
       <EdgeLabelRenderer>
-        <span
-          className="edge-cardinality"
-          style={{
-            transform: `translate(0,-50%) translate(${props.sourceX + 9}px,${props.sourceY}px)`,
-            color: highlighted ? "#3273dc" : undefined,
-          }}
-        >
-          {parts[0]}
-        </span>
-        <span
-          className="edge-cardinality"
-          style={{
-            transform: `translate(-100%,-50%) translate(${props.targetX - 9}px,${props.targetY}px)`,
-            color: highlighted ? "#3273dc" : undefined,
-          }}
-        >
-          {parts[1]}
-        </span>
         {(!!props.data?.explicitSelected || !!props.data?.showLabel) && (
           <span
             className="edge-name nodrag nopan"

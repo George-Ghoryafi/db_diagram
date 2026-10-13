@@ -391,9 +391,6 @@ main {
   background: #aebcc9;
   opacity: 0;
 }
-.table-node:hover .react-flow__handle {
-  opacity: 1;
-}
 .index-row {
   font-size: 9px;
   color: #8694a6;
@@ -1037,16 +1034,6 @@ footer .error {
 .field-highlight {
   background: #e4f1ff !important;
   color: #326cb0;
-}
-.edge-cardinality {
-  position: absolute;
-  font-size: 9px;
-  font-weight: 600;
-  color: #748699;
-  pointer-events: none;
-  background: #fafbfddd;
-  border-radius: 2px;
-  padding: 1px 3px;
 }
 .edge-name {
   position: absolute;
