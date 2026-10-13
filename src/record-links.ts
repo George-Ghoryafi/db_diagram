@@ -1,11 +1,11 @@
 import { isMany } from './cardinality';
 export type RecordValue = { value: string | number | boolean | null; type?: string };
 export type RecordFocus = { columns: string[]; values: string[] };
-type Ref = { fromTable: string; fromFields: string[]; toTable: string; toFields: string[]; relation: string };
+type Ref = { fromTable: string; fromFields: string[]; toTable: string; toFields: string[]; relation: string; sqlRelation?: string };
 
 export function recordLinks(refs: Ref[], tableId: string, column: string, columns: string[], row: RecordValue[]) {
   return refs.flatMap(ref => {
-    const [from, to] = ref.relation.split(':');
+    const [from, to] = (ref.sqlRelation || ref.relation).split(':');
     const source = ref.fromTable === tableId && isMany(from) && !isMany(to);
     const target = ref.toTable === tableId && (isMany(to) && !isMany(from) || !isMany(from) && !isMany(to));
     if (!source && !target) return [];

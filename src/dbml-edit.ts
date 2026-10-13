@@ -235,9 +235,10 @@ export async function setRelationshipCardinality(source: string, id: string, fro
   const ref = db.schemas.flatMap(schema => schema.refs.map((ref, index) => ({ ref, id: `${schema.name}.ref${index}` }))).find(value => value.id === id)?.ref;
   if (!ref) throw new Error('This relationship no longer exists.');
   const start = ref.token.start.offset, end = ref.token.end.offset, declaration = source.slice(start, end);
-  const inline = /^ref\s*:/i.test(declaration);
+  const inline = /^ref\s*:\s*[?<>-]/i.test(declaration);
   const leftBound = inline ? b : a, rightBound = inline ? a : b;
-  const leftMany = isMany(inline ? to : from), rightMany = isMany(inline ? from : to);
+  // Bounds document participation; keep the existing foreign-key direction and SQL relationship kind.
+  const leftMany = isMany(ref.endpoints[inline ? 1 : 0].relation), rightMany = isMany(ref.endpoints[inline ? 0 : 1].relation);
   const operator = (leftBound.minimum === 0 ? '?' : '') + (leftMany ? rightMany ? '<>' : '>' : rightMany ? '<' : '-') + (rightBound.minimum === 0 ? '?' : '');
   const token = [...declaration.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[?<>-]+/g)].find(token => /^[?<>-]+$/.test(token[0]));
   if (!token) throw new Error('Could not locate the relationship operator.');

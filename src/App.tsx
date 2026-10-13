@@ -124,6 +124,7 @@ type Model = {
     toTable: string;
     toFields: string[];
     relation: string;
+    sqlRelation?: string;
     name?: string;
     color?: string;
   }[];

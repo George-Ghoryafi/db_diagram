@@ -39,12 +39,12 @@ export function highlightedRelationships(
 }
 
 export function foreignKeyTargets(
- refs:{fromTable:string;fromFields:string[];toTable:string;toFields:string[];relation:string}[],
+ refs:{fromTable:string;fromFields:string[];toTable:string;toFields:string[];relation:string;sqlRelation?:string}[],
  tableId:string,
 ){
  const targets:Record<string,string[]>={};
  for(const ref of refs){
-  const [from,to]=ref.relation.split(':');
+  const [from,to]=(ref.sqlRelation || ref.relation).split(':');
   if(ref.fromTable===tableId && isMany(from))ref.fromFields.forEach((field,index)=>(targets[field]??=[]).push(ref.toTable+'.'+ref.toFields[index]));
   if(ref.toTable===tableId && (isMany(to)||(!isMany(from)&&!isMany(to))))ref.toFields.forEach((field,index)=>(targets[field]??=[]).push(ref.fromTable+'.'+ref.fromFields[index]));
  }

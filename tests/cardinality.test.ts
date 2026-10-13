@@ -19,7 +19,7 @@ test('bounded cardinalities preserve SQL, storage comments, names and reference 
  const next = await setRelationshipCardinality(original,'public.ref0','2..5','0..1');
  assert.equal(parseSchema(next).refs[0].relation,'2..5:0..1');
  assert.equal(parseSchema(next).tables[1].fields[1].name,'user_id');
- assert.match(next, /ref: \?</);
+ assert.match(next, /ref: \?>/);
  assert.match(exportSchema(next,'postgres'), /FOREIGN KEY/);
  assert.ok(next.includes('/* @schemadb-storage'));
  assert.equal(relationshipFlow('1:2..5'),'forward');
@@ -43,4 +43,15 @@ test('bounded edits retain named composite references, settings and quoted ident
  assert.deepEqual(model.refs[0].fromFields,['org_id','item_id']);
  assert.match(exportSchema(next,'postgres'),/ON DELETE CASCADE/);
  assert.throws(()=>parseSchema(next+'\n/* @schemadb-cardinality {"version":1,"relationships":{}} */'));
+});
+
+test('editing participation bounds does not reverse the underlying SQL foreign key',async()=>{
+ const source="Table parents {\n id int [pk]\n}\nTable children {\n parent_id int\n}\nRef: children.parent_id > parents.id";
+ const next=await setRelationshipCardinality(source,'public.ref0','1','0..1');
+ const model=parseSchema(next);
+ assert.equal(model.refs[0].relation,'1:0..1');
+ assert.equal(model.refs[0].sqlRelation,'*:0..1');
+ assert.deepEqual(foreignKeyTargets(model.refs,'public.children'),{parent_id:['public.parents.id']});
+ assert.equal(recordLinks(model.refs,'public.children','parent_id',['parent_id'],[{value:0}])[0].tableId,'public.parents');
+ assert.match(exportSchema(next,'postgres'),/ALTER TABLE "children" ADD FOREIGN KEY/);
 });

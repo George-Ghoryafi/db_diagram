@@ -138,6 +138,7 @@ export function parseSchema(text: string) {
           toTable: `${to.schemaName || schema.name}.${to.tableName}`,
           toFields: to.fieldNames,
           relation: bounds ? `${bounds.from}:${bounds.to}` : `${from.relation}:${to.relation}`,
+          ...(bounds ? { sqlRelation: `${from.relation}:${to.relation}` } : {}),
         };
       }),
     ),
