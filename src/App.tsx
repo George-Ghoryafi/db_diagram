@@ -166,6 +166,10 @@ function TableNode({ id, data, selected }: NodeProps) {
     <div className="table-title" style={{background:t.color || "#326d94"}}>
       <b>{t.schema==="public"?"":t.schema+"."}{t.name}</b>
       {t.note&&<SchemaTooltip heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><p>{t.note}</p></>}><span className="note-indicator" aria-label={"Note on "+t.name}><MessageSquare size={13}/></span></SchemaTooltip>}
+      {selected && <div className="table-access-icons nodrag nopan">
+        <button type="button" aria-label="Table records" title="Table records" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.openRecords as () => void)(); }}><Grid2X2 size={14}/></button>
+        <AppearanceSettings label="Table header color" color={t.color || '#326d94'} onApply={data.applyColor as (color: string) => Promise<void>} />
+      </div>}
       {data.detail==="names"&&<><Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/></>}
     </div>
     {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
@@ -242,6 +246,9 @@ function RelationshipEdge(props: EdgeProps) {
         />
       ))}
       <EdgeLabelRenderer>
+        {!!props.data?.explicitSelected && <div className="edge-access-icons nodrag nopan" style={{transform:`translate(-50%,-100%) translate(${(props.data?.accessPoint as {x:number;y:number} | undefined)?.x ?? labelX}px,${((props.data?.accessPoint as {x:number;y:number} | undefined)?.y ?? labelY)-12}px)`}}>
+          <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#93a2b3')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />
+        </div>}
         {(!!props.data?.explicitSelected || !!props.data?.showLabel) && (
           <span
             className="edge-name nodrag nopan"
@@ -294,6 +301,7 @@ function Workspace() {
     [groupColor, setGroupColor] = useState("#537bad");
   const [arrangement, setArrangement] = useState<Arrangement>("left-right");
   const [selectedEdge, setSelectedEdge] = useState("");
+  const [edgeAccessPoint, setEdgeAccessPoint] = useState<{x:number;y:number}>();
   const [panMode, setPanMode] = useState(false),
     [highlight, setHighlight] = useState(false),
     [snap, setSnap] = useState(false),
@@ -893,11 +901,14 @@ function Workspace() {
     ];
     return {
       ...n,
+      selected: n.id === selected,
       data: {
         ...n.data,
         detail,
         keys,
         foreignKeys:foreignKeyTargets(model.refs,t.id),
+        openRecords: () => { setTableId(t.id); setModal('records'); },
+        applyColor: (color: string) => applyVisualColor('table', t.id, color),
         highlightFields: model.refs
           .filter((r) => highlightedRefs.has(r.id))
           .flatMap((r) => [
@@ -945,7 +956,6 @@ function Workspace() {
       },
     ];
   });
-  const selectedRef = model.refs.find((r) => r.id === selectedEdge);
   const obstacles = displayedNodes.map(n => ({
     ...n.position,
     width: n.measured?.width || 260,
@@ -968,6 +978,9 @@ function Workspace() {
       interactionWidth: 24,
       data: {
         obstacles,
+        color: r.color,
+        accessPoint: active ? edgeAccessPoint : undefined,
+        applyColor: (color: string) => applyVisualColor('relationship', r.id, color),
         relation: r.relation,
         highlighted: related,
         explicitSelected:active,
@@ -1369,9 +1382,10 @@ function Workspace() {
               setSelected("");
               setSelectedEdge("");
             }}
-            onEdgeClick={(_, edge) => {
+            onEdgeClick={(event, edge) => {
               setSelected("");
               setSelectedEdge(edge.id);
+              setEdgeAccessPoint(flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));
             }}
             onConnect={(connection) => {
               const from = model.tables.find((t) => t.id === connection.source),
@@ -1545,51 +1559,6 @@ function Workspace() {
               <Layers size={17} />
             </button>
           </div>
-          {selectedRef && (
-            <div className="selection-info relationship-info">
-              <Route size={14} />
-              <div>
-                <b>{selectedRef.name || "Relationship"}</b>
-                <span>
-                  {selectedRef.fromTable}.{selectedRef.fromFields.join(", ")} →{" "}
-                  {selectedRef.toTable}.{selectedRef.toFields.join(", ")}
-                </span>
-                <small>{selectedRef.relation}</small>
-              </div>
-              <AppearanceSettings key={selectedRef.id} label="Relationship color" color={selectedRef.color || '#93a2b3'} onApply={color => applyVisualColor('relationship', selectedRef.id, color)} />
-              <button
-                aria-label="Clear relationship selection"
-                onClick={() => setSelectedEdge("")}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-          {selected && (
-            <div className="selection-info">
-              <Table2 size={14} />
-              {model.tables.find((t) => t.id === selected)?.name}
-              <AppearanceSettings key={selected} label="Table header color" color={model.tables.find(t => t.id === selected)?.color || '#326d94'} onApply={color => applyVisualColor('table', selected, color)} />
-              <button aria-label="Table records" title="Table records" onClick={() => { setTableId(selected); setModal('records'); }}><Grid2X2 size={15} /></button>
-              <button
-                onClick={() => {
-                  setTableId(selected);
-                  setName("");
-                  setColumns([]);
-                  setUnique(false);
-                  setModal("index");
-                }}
-              >
-                <Plus size={12} /> Index
-              </button>
-              <button
-                aria-label="Clear selection"
-                onClick={() => setSelected("")}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
         </section>
       </main>
       <footer>
