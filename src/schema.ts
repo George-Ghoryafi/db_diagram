@@ -86,7 +86,7 @@ export function parseSchema(text: string) {
         name: table.name,
         schema: schema.name,
         note: table.note || "",
-        color: table.headerColor || "#355772",
+        color: table.headerColor || "#316896",
         records: (() => {
           const records = db.schemas.find(s => s.name === schema.name)?.tables.find(t => t.name === table.name)?.records[0];
           return records ? {

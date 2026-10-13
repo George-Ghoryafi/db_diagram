@@ -202,7 +202,7 @@ test('shared attribute ports keep each relationship inside its own row without o
   slots.forEach((slot, i) => {
     assert.ok(Math.abs(slot.offset) + slot.halfHeight < 15);
     if (i) assert.ok(slot.offset - slot.halfHeight > slots[i-1].offset + slots[i-1].halfHeight);
-    assert.deepEqual(ports[refs[i].id].target, { offset: 0, halfHeight: 6, width: 15 });
+    assert.deepEqual(ports[refs[i].id].target, { offset: 0, halfHeight: 4, width: 10 });
   });
   assert.equal(relationshipFlow('1:*'), 'forward');
   assert.equal(relationshipFlow('*:1'), 'reverse');

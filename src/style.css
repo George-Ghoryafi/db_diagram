@@ -1674,8 +1674,16 @@ button:disabled {
 .group-title-tools { position: absolute; top: 8px; left: 11px; display: flex; align-items: center; gap: 5px; pointer-events: auto; }
 .group-title-tools .group-focus-button { position: static; margin: 0; }
 .group-title-tools .appearance-trigger { color: #526984; width: 22px; height: 22px; background: transparent; border: 0; }
-.edge-hovered .relationship-line { stroke-dasharray: 5; animation: dashdraw .5s linear infinite; }
-.edge-hovered .relationship-line.flow-reverse { animation-direction: reverse; }
-.edge-hovered .relationship-line.flow-both { animation: none; stroke-dasharray: none; }
-.edge-hovered .edge-cardinality { animation: none; stroke-dasharray: none; }
-@media (prefers-reduced-motion: reduce) { .edge-hovered .relationship-line { animation: none !important; } }
+/* Keep the base cable solid; only short flow marks move. */
+.relationship-motion { stroke-dasharray: 3 40; stroke-linecap: round; animation: relationship-flow 1.3s linear infinite; }
+.relationship-motion.flow-reverse { animation-direction: reverse; }
+@keyframes relationship-flow { from { stroke-dashoffset: 43; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .relationship-motion { display: none; } }
+
+.table-node { background: #f2f2f2; border-radius: 3px; border-color: #d0d0d0; box-shadow: 0 2px 5px #00000012; }
+.table-title { border-radius: 2px 2px 0 0; }
+.field { border-bottom-color: transparent; }
+.field-name { color: #3c3c3c; }
+.field-type { color: #6a6a6a; }
+.field-highlight { background: #deedf2 !important; }
+.edge-name { color: #475aff; font-size: 13px; background: #f8fafc; border: 0; border-radius: 0; padding: 2px 5px; box-shadow: none; }

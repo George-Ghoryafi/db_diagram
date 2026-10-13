@@ -1,6 +1,6 @@
 import type { Point, RelationshipRoute, TableBounds } from './edge-routing';
 export type RouteRequest = { key: string; relationships: RelationshipRoute[]; tables: TableBounds[] };
-export type RouteResult = { key: string; routes: Record<string, Point[] | null>; error?: string };
+export type RouteResult = { key: string; routes: Record<string, Point[] | null>; tables?: TableBounds[]; error?: string };
 
 // Keep one search in flight and one latest request; never queue pointer movements.
 export function createRoutePlanner(send: (request: RouteRequest) => void, accept: (result: RouteResult) => void) {

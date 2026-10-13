@@ -61,3 +61,18 @@ test('parallel relationships use distinct lanes and avoid table obstacles', asyn
     }
   }
 });
+
+test('rounded routes match 10px bends without cutting through table corners', () => {
+  const points=[{x:0,y:0},{x:100,y:0},{x:100,y:100}];
+  assert.equal(routeGeometry(points).path,'M 0 0 L 90 0 Q 100 0 100 10 L 100 100');
+  assert.equal(routeGeometry([{x:0,y:0},{x:8,y:0},{x:8,y:40}]).path,'M 0 0 L 4 0 Q 8 0 8 4 L 8 40');
+  assert.equal(routeGeometry(points,[{x:100,y:0,width:100,height:100}]).path,'M 0 0 L 100 0 L 100 100');
+  assert.equal(routeGeometry(points,[{x:106,y:0,width:100,height:100}]).path,'M 0 0 L 94 0 Q 100 0 100 6 L 100 100');
+});
+
+test('selected relationship labels sit on the segment nearest the click', async () => {
+  const { projectToRoute }=await import('../src/edge-routing');
+  const route=[{x:0,y:0},{x:100,y:0},{x:100,y:100}];
+  assert.deepEqual(projectToRoute(route,{x:104,y:70}),{x:100,y:70});
+  assert.deepEqual(projectToRoute(route,{x:25,y:-8}),{x:25,y:0});
+});

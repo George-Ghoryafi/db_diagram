@@ -52,7 +52,7 @@ export function relationshipPorts(refs: { id: string; fromTable: string; toTable
   const groups = new Map<string, { id: string; side: "source" | "target" }[]>();
   const ports: Record<string, { source: RelationshipPort; target: RelationshipPort }> = {};
   for (const ref of refs) {
-    ports[ref.id] = { source: { offset: 0, halfHeight: 6, width: 15 }, target: { offset: 0, halfHeight: 6, width: 15 } };
+    ports[ref.id] = { source: { offset: 0, halfHeight: 4, width: 10 }, target: { offset: 0, halfHeight: 4, width: 10 } };
     for (const side of ["source", "target"] as const) {
       const key = JSON.stringify([side, side === "source" ? ref.fromTable : ref.toTable, detail === "names" ? "header" : (side === "source" ? ref.fromFields[0] : ref.toFields[0])]);
       const group = groups.get(key) || [];
@@ -64,7 +64,7 @@ export function relationshipPorts(refs: { id: string; fromTable: string; toTable
     if (group.length < 2) continue;
     const spacing = 18 / (group.length - 1);
     group.forEach(({ id, side }, index) => {
-      ports[id][side] = { offset: -9 + spacing * index, halfHeight: Math.min(4, spacing * .4), width: 9 };
+      ports[id][side] = { offset: -9 + spacing * index, halfHeight: Math.min(3, spacing * .4), width: 8 };
     });
   }
   return ports;

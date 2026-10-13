@@ -116,7 +116,7 @@ function routeWithClearance(source: Point, target: Point, tables: TableBounds[],
   return null;
 }
 
-export function routeGeometry(points: Point[]) {
+export function routeGeometry(points: Point[], tables: TableBounds[] = []) {
   const lengths = points.slice(1).map((p, i) => Math.abs(p.x - points[i].x) + Math.abs(p.y - points[i].y));
   let remaining = lengths.reduce((a, b) => a + b, 0) / 2;
   let label = points[0];
@@ -128,5 +128,33 @@ export function routeGeometry(points: Point[]) {
     }
     remaining -= lengths[i];
   }
-  return { path: points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' '), label };
+  const path = [`M ${points[0].x} ${points[0].y}`];
+  for (let i = 1; i < points.length; i++) {
+    const previous = points[i - 1], corner = points[i], next = points[i + 1];
+    const incoming = lengths[i - 1], outgoing = lengths[i] || 0;
+    const turning = next && previous.x !== next.x && previous.y !== next.y;
+    // A rounded bend must stay outside the real table, including narrow-gap routes.
+    const clearance = Math.min(Infinity, ...tables.map(table => Math.hypot(
+      Math.max(table.x - corner.x, 0, corner.x - table.x - table.width),
+      Math.max(table.y - corner.y, 0, corner.y - table.y - table.height),
+    )));
+    const radius = turning ? Math.min(10, incoming / 2, outgoing / 2, clearance) : 0;
+    if (!radius) { path.push(`L ${corner.x} ${corner.y}`); continue; }
+    const before = { x: corner.x + (previous.x - corner.x) * radius / incoming, y: corner.y + (previous.y - corner.y) * radius / incoming };
+    const after = { x: corner.x + (next.x - corner.x) * radius / outgoing, y: corner.y + (next.y - corner.y) * radius / outgoing };
+    path.push(`L ${before.x} ${before.y} Q ${corner.x} ${corner.y} ${after.x} ${after.y}`);
+  }
+  return { path: path.join(' '), label };
+}
+
+export function projectToRoute(points: Point[], point: Point) {
+  let nearest = points[0], distance = Infinity;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y;
+    const fraction = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    const projection = { x: a.x + dx * fraction, y: a.y + dy * fraction };
+    const candidate = Math.hypot(point.x - projection.x, point.y - projection.y);
+    if (candidate < distance) { nearest = projection; distance = candidate; }
+  }
+  return nearest;
 }

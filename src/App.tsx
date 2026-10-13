@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { routeGeometry, type TableBounds, type Point as RoutePoint } from "./edge-routing";
+import { routeGeometry, projectToRoute, type TableBounds, type Point as RoutePoint } from "./edge-routing";
 import { useRelationshipRoutes } from "./use-relationship-routes";
 import { DiagramSkeleton } from "./DiagramSkeleton";
 import { AgentSetup } from "./AgentSetup";
@@ -164,7 +164,7 @@ function download(name: string, text: string) {
 const SchemaEditor = memo(CodeMirror);
 const editorExtensions = [dbmlLanguage, dbmlColors];
 const editorSetup = { foldGutter: true, lineNumbers: true, highlightActiveLine: true };
-const palette = ["#326d94", "#537bad", "#6d66a3", "#3c877c", "#bc8951"];
+const palette = ["#316896", "#537bad", "#6d66a3", "#3c877c", "#bc8951"];
 function TableNode({ id, data, selected }: NodeProps) {
   const t = data.table as Table;
   const updateInternals = useUpdateNodeInternals();
@@ -172,12 +172,12 @@ function TableNode({ id, data, selected }: NodeProps) {
   const primaryKeys=new Set([...t.fields.filter(f=>f.pk).map(f=>f.name),...t.indexes.filter(i=>i.pk).flatMap(i=>i.columns.filter((c:any)=>c.type==="column").map((c:any)=>c.value))]);
   const foreignKeys=(data.foreignKeys || {}) as Record<string,string[]>;
   return <div className={"table-node "+(selected?"selected":"")}>
-    <div className="table-title" style={{background:t.color || "#326d94"}}>
+    <div className="table-title" style={{background:t.color || "#316896"}}>
       <b>{t.schema==="public"?"":t.schema+"."}{t.name}</b>
       {t.note&&<SchemaTooltip heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><p>{t.note}</p></>}><span className="note-indicator" aria-label={"Note on "+t.name}><MessageSquare size={13}/></span></SchemaTooltip>}
       {selected && <div className="table-access-icons nodrag nopan">
         <button type="button" aria-label="Table records" title="Table records" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.openRecords as () => void)(); }}><Grid2X2 size={14}/></button>
-        <AppearanceSettings label="Table header color" color={t.color || '#326d94'} onApply={data.applyColor as (color: string) => Promise<void>} />
+        <AppearanceSettings label="Table header color" color={t.color || '#316896'} onApply={data.applyColor as (color: string) => Promise<void>} />
       </div>}
       {data.detail==="names"&&<><Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/></>}
     </div>
@@ -232,25 +232,26 @@ function RelationshipEdge(props: EdgeProps) {
   const direction = relationshipFlow(String(props.data?.relation));
   const [path, labelX, labelY] = useMemo(() => {
     const planned = props.data?.route as RoutePoint[] | null | undefined;
-    if (!planned || props.data?.dragging || (planned.length < 3 && sourceY !== targetY)) return getSmoothStepPath({ ...props, sourceY, targetY });
+    if (!planned || props.data?.dragging || (planned.length < 3 && sourceY !== targetY)) return getSmoothStepPath({ ...props, sourceY, targetY, borderRadius: 10 });
     const points = planned;
     const adjusted = points.map(point => ({ ...point }));
     adjusted[0] = { x: props.sourceX, y: sourceY };
     adjusted[adjusted.length - 1] = { x: props.targetX, y: targetY };
     if (adjusted.length > 2) { adjusted[1].y = sourceY; adjusted[adjusted.length - 2].y = targetY; }
-    const geometry = routeGeometry(adjusted);
-    return [geometry.path, geometry.label.x, geometry.label.y] as const;
-  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route]);
+    const geometry = routeGeometry(adjusted, (props.data?.routeBounds || []) as TableBounds[]);
+    const label = props.data?.explicitSelected && props.data?.accessPoint ? projectToRoute(adjusted, props.data.accessPoint as RoutePoint) : geometry.label;
+    return [geometry.path, label.x, label.y] as const;
+  }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route, props.data?.routeBounds, props.data?.accessPoint, props.data?.explicitSelected]);
   const parts = String(props.data?.relation || "").split(":");
   const highlighted = hovered || props.selected || !!props.data?.highlighted;
-  const stroke = String(props.data?.color || (highlighted ? "#3273dc" : props.style?.stroke || "#93a2b3"));
+  const stroke = String(props.data?.color || (highlighted ? "#475aff" : props.style?.stroke || "#9b9ca4"));
   return (
     <g className={hovered ? "edge-hovered" : undefined} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>
       <BaseEdge
         id={props.id}
         className={`relationship-line flow-${direction}`}
         path={path}
-        style={{ ...props.style, stroke, strokeWidth: highlighted ? 2.5 : props.style?.strokeWidth }}
+        style={{ ...props.style, stroke, strokeWidth: highlighted ? 2 : props.style?.strokeWidth }}
         interactionWidth={10}
       />
       {[
@@ -262,20 +263,21 @@ function RelationshipEdge(props: EdgeProps) {
           className="edge-cardinality"
           aria-label={cardinality === "*" ? "Many" : "One"}
           d={cardinality === "*"
-            ? `M ${x + direction * 2} ${y - (port?.halfHeight || 6)} L ${x + direction * (port?.width || 15)} ${y} L ${x + direction * 2} ${y + (port?.halfHeight || 6)} M ${x + direction * 2} ${y} L ${x + direction * (port?.width || 15)} ${y}`
-            : `M ${x + direction * ((port?.width || 15) / 2)} ${y - (port?.halfHeight || 6)} L ${x + direction * ((port?.width || 15) / 2)} ${y + (port?.halfHeight || 6)}`}
+            ? `M ${x + direction * 2} ${y - (port?.halfHeight || 4)} L ${x + direction * (port?.width || 10)} ${y} L ${x + direction * 2} ${y + (port?.halfHeight || 4)} M ${x + direction * 2} ${y} L ${x + direction * (port?.width || 10)} ${y}`
+            : `M ${x + direction * ((port?.width || 10) / 2)} ${y - (port?.halfHeight || 4)} L ${x + direction * ((port?.width || 10) / 2)} ${y + (port?.halfHeight || 4)}`}
           fill="none"
           stroke={stroke}
-          strokeWidth={Math.min(1.5, (port?.halfHeight || 6) * .4)}
+          strokeWidth={Math.min(highlighted ? 1.4 : 1, (port?.halfHeight || 4) * .4)}
           pointerEvents="none"
         />
       ))}
+      {highlighted && direction !== "both" && <path className={`relationship-motion flow-${direction}`} d={path} fill="none" stroke={stroke} strokeWidth={3} pointerEvents="none" />}
       {highlighted && direction === "both" && <g className="relationship-particles" fill={stroke}>
         {["0;1", "1;0"].map(points => <circle key={points} r={2.4}><animateMotion path={path} dur="3s" repeatCount="indefinite" keyPoints={points} keyTimes="0;1" calcMode="linear" /></circle>)}
       </g>}
       <EdgeLabelRenderer>
         {!!props.data?.explicitSelected && <div className="edge-access-icons nodrag nopan" style={{transform:`translate(-50%,-100%) translate(${(props.data?.accessPoint as {x:number;y:number} | undefined)?.x ?? labelX}px,${((props.data?.accessPoint as {x:number;y:number} | undefined)?.y ?? labelY)-12}px)`}}>
-          <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#93a2b3')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />
+          <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#9b9ca4')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />
         </div>}
         {(!!props.data?.explicitSelected || !!props.data?.showLabel) && (
           <span
@@ -1037,11 +1039,12 @@ function Workspace() {
       type: "relationship",
       ariaLabel: `Relationship ${r.name || r.fromTable + " to " + r.toTable}`,
       selected: active || (!!selected && (r.fromTable===selected || r.toTable===selected)),
-      animated: active || related,
+      animated: false,
       interactionWidth: 10,
       data: {
         ports: ports[r.id],
         route: relationshipRoutes[r.id],
+        routeBounds: routing.tables,
         dragging: movingTables.has(r.fromTable) || movingTables.has(r.toTable),
         color: r.color,
         accessPoint: active ? edgeAccessPoint : undefined,
@@ -1055,12 +1058,12 @@ function Workspace() {
           `${r.fromTable}.${r.fromFields.join(", ")} → ${r.toTable}.${r.toFields.join(", ")}`,
       },
       style: {
-        stroke: r.color || (active || related ? "#3273dc" : "#93a2b3"),
-        strokeWidth: active || related ? 2.5 : 1.3,
+        stroke: r.color || (active || related ? "#475aff" : "#9b9ca4"),
+        strokeWidth: active || related ? 2 : 1,
         opacity: 1,
       },
     };
-  }), [model.refs, ports, relationshipRoutes, selectedEdge, highlightedRefs, selected, edgeAccessPoint, movingTables]);
+  }), [model.refs, ports, relationshipRoutes, routing.tables, selectedEdge, highlightedRefs, selected, edgeAccessPoint, movingTables]);
   const applyVisualColor = async (kind: 'table' | 'relationship' | 'group', id: string, color: string) => {
     const previous = latestCode.current;
     const next = await setVisualColor(previous, kind, id, color);
@@ -1507,7 +1510,7 @@ function Workspace() {
               />
             }
             <MiniMap
-              nodeColor={(n) => (n.data.table as Table)?.color || "#326d94"}
+              nodeColor={(n) => (n.data.table as Table)?.color || "#316896"}
               maskColor="#f6f8fac9"
             />
           </ReactFlow>
