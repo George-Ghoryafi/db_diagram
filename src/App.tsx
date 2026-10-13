@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { routeRelationship, routeGeometry, type TableBounds } from "./edge-routing";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { TableRecords, type RecordData } from "./TableRecords";
+import type { RecordFocus } from "./record-links";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -302,6 +303,8 @@ function Workspace() {
   const [arrangement, setArrangement] = useState<Arrangement>("left-right");
   const [selectedEdge, setSelectedEdge] = useState("");
   const [edgeAccessPoint, setEdgeAccessPoint] = useState<{x:number;y:number}>();
+  const [recordFocus, setRecordFocus] = useState<RecordFocus>();
+  const [recordHistory, setRecordHistory] = useState<{tableId: string; focus?: RecordFocus}[]>([]);
   const [panMode, setPanMode] = useState(false),
     [highlight, setHighlight] = useState(false),
     [snap, setSnap] = useState(false),
@@ -375,7 +378,7 @@ function Workspace() {
     };
     window.addEventListener("keydown", handle);
     return () => {cancelAnimationFrame(focusFrame);window.removeEventListener("keydown", handle);};
-  }, [modal]);
+  }, [modal, modal === 'records' ? tableId : null]);
   const fitDiagram = (options: FitViewOptions = {}) => {
     const canvas = canvasRef.current;
     if (!canvas) return Promise.resolve(false);
@@ -907,7 +910,7 @@ function Workspace() {
         detail,
         keys,
         foreignKeys:foreignKeyTargets(model.refs,t.id),
-        openRecords: () => { setTableId(t.id); setModal('records'); },
+        openRecords: () => { setTableId(t.id); setRecordFocus(undefined); setRecordHistory([]); setModal('records'); },
         applyColor: (color: string) => applyVisualColor('table', t.id, color),
         highlightFields: model.refs
           .filter((r) => highlightedRefs.has(r.id))
@@ -1585,7 +1588,11 @@ function Workspace() {
               : "Local workspace"}
         </span>
       </footer>
-      {modal === 'records' && model.tables.find(t => t.id === tableId) && <TableRecords key={tableId} table={model.tables.find(t => t.id === tableId)!} refs={model.refs} onClose={() => setModal('')} onApply={async (columns, rows) => {
+      {modal === 'records' && model.tables.find(t => t.id === tableId) && <TableRecords key={tableId} table={model.tables.find(t => t.id === tableId)!} refs={model.refs} focus={recordFocus} onNavigate={(id, focus) => {
+        setRecordHistory(history => [...history, {tableId, focus: recordFocus}]); setTableId(id); setRecordFocus(focus);
+      }} onBack={recordHistory.length ? () => {
+        const previous = recordHistory.at(-1)!; setRecordHistory(recordHistory.slice(0, -1)); setTableId(previous.tableId); setRecordFocus(previous.focus);
+      } : undefined} onClose={() => setModal('')} onApply={async (columns, rows) => {
         const previous = latestCode.current;
         const next = await setTableRecords(previous, tableId, columns, rows);
         if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen records and try again.');

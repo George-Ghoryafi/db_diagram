@@ -1564,6 +1564,12 @@ button:disabled {
 .records-heading h2 { font-size: 16px; margin: 0; }
 .records-toolbar button, .records-empty button { border: 1px solid #cbd5e1; border-radius: 5px; height: 32px; padding: 0 11px; gap: 6px; margin: 0; }
 .records-heading .records-close { margin-left: auto; border: 0; }
+.records-back { width: 30px; height: 30px; display: grid; place-items: center; color: #65809d; border: 1px solid #dce4ee; border-radius: 5px; }
+.records-grid .record-link { color: #2d71ce; text-decoration: underline; text-underline-offset: 3px; font: inherit; padding: 0; display: inline; }
+.record-link-group { display: flex; align-items: center; gap: 8px; }
+.records-grid .record-match td { background: #dbeafe; border-bottom-color: #a8c8ed; }
+.record-match { outline: none; }
+.record-navigation-hint { margin: 14px 24px 0; padding: 10px 12px; color: #657890; background: #f2f6fa; border: 1px solid #e2e9f1; border-radius: 5px; font-size: 12px; }
 .records-grid { overflow: auto; flex: 0 1 auto; padding: 0 24px 24px; }
 .records-grid table { border-collapse: separate; border-spacing: 0; font-size: 12px; width: 100%; min-width: 400px; }
 .records-grid th, .records-grid td { border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: 9px 12px; text-align: left; }

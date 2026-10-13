@@ -2,7 +2,7 @@
 
 A React + TypeScript schema workspace, based on dbdiagram's editor/canvas layout. Node/Express backend, official `@dbml/core` DBML v2 parser, CodeMirror editor, React Flow canvas. Runs locally or on Vercel with Neon and public bundles.
 
-Select a table to open its header-color settings or records grid. Select a relationship to set its color. Presets and custom hex colors write standard DBML settings. Records support adding/editing rows, key and related-column hover details, and CSV download; sample data is stored in DBML `records` blocks. Apply changes, then Save the diagram to persist them. Edges route around table bounds and update when tables move.
+Select a table to reveal records and color buttons in its title bar. Clicking a relationship reveals a gear above the clicked point; color controls open only when the gear is pressed. Presets and custom hex colors write standard DBML settings. The compact records grid supports adding/editing rows, key and related-column hover details, and CSV download; sample data is stored in DBML `records` blocks. Foreign-key values open the parent table and highlight the matching record, with Back navigation and composite-key support. Apply changes, then Save the diagram to persist them. Edges route around table bounds and update when tables move.
 
 ## Run
 
