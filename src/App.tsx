@@ -224,7 +224,7 @@ function RelationshipEdge(props: EdgeProps) {
         <span
           className="edge-cardinality"
           style={{
-            transform: `translate(-100%,-50%) translate(${props.sourceX - 9}px,${props.sourceY}px)`,
+            transform: `translate(0,-50%) translate(${props.sourceX + 9}px,${props.sourceY}px)`,
             color: highlighted ? "#3273dc" : undefined,
           }}
         >
@@ -233,7 +233,7 @@ function RelationshipEdge(props: EdgeProps) {
         <span
           className="edge-cardinality"
           style={{
-            transform: `translate(0,-50%) translate(${props.targetX + 9}px,${props.targetY}px)`,
+            transform: `translate(-100%,-50%) translate(${props.targetX - 9}px,${props.targetY}px)`,
             color: highlighted ? "#3273dc" : undefined,
           }}
         >
