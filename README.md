@@ -1,6 +1,8 @@
-# Local DB Diagram
+# schemaDB
 
-A local React + TypeScript schema workspace, based on dbdiagram's editor/canvas layout. Node/Express backend, official `@dbml/core` DBML v2 parser, CodeMirror editor, React Flow canvas. No cloud services, account, or collaboration.
+A React + TypeScript schema workspace, based on dbdiagram's editor/canvas layout. Node/Express backend, official `@dbml/core` DBML v2 parser, CodeMirror editor, React Flow canvas. Runs locally or on Vercel with Neon and public bundles.
+
+Select a table to open its header-color settings or records grid. Select a relationship to set its color. Presets and custom hex colors write standard DBML settings. Records support adding/editing rows, key and related-column hover details, and CSV download; sample data is stored in DBML `records` blocks. Apply changes, then Save the diagram to persist them. Edges route around table bounds and update when tables move.
 
 ## Run
 

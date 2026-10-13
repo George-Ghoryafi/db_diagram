@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { routeRelationship, routeGeometry, type TableBounds } from "./edge-routing";
+import { AppearanceSettings } from "./AppearanceSettings";
+import { TableRecords, type RecordData } from "./TableRecords";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -54,7 +56,7 @@ import {
   Route,
   Focus,
 } from "lucide-react";
-import { addIndex, setAttachedNote, findTableRange } from "./dbml-edit";
+import { addIndex, setAttachedNote, setVisualColor, setTableRecords, findTableRange } from "./dbml-edit";
 import {
   highlightedRelationships,
   foreignKeyTargets,
@@ -79,6 +81,7 @@ type Field = {
   note?: string;
 };
 type Table = {
+  records?: RecordData | null;
   id: string;
   name: string;
   schema: string;
@@ -99,6 +102,7 @@ type Model = {
     toFields: string[];
     relation: string;
     name?: string;
+    color?: string;
   }[];
   groups: { name: string; color?: string; tables: string[]; note?: string }[];
 };
@@ -232,7 +236,7 @@ function RelationshipEdge(props: EdgeProps) {
             ? `M ${x + direction * 2} ${y - 6} L ${x + direction * 15} ${y} L ${x + direction * 2} ${y + 6} M ${x + direction * 2} ${y} L ${x + direction * 15} ${y}`
             : `M ${x + direction * 8} ${y - 6} L ${x + direction * 8} ${y + 6}`}
           fill="none"
-          stroke={highlighted ? "#3273dc" : "#748699"}
+          stroke={String(props.style?.stroke || (highlighted ? "#3273dc" : "#748699"))}
           strokeWidth={1.5}
           pointerEvents="none"
         />
@@ -322,8 +326,8 @@ function Workspace() {
     const bundle =
       bundles.find((b) => b.id === activeBundle)?.name || "Shared diagrams";
     document.title = doc?.name
-      ? doc.name + " · " + bundle + " — dbdiagram"
-      : bundle + " — dbdiagram";
+      ? doc.name + " · " + bundle + " — schemaDB"
+      : bundle + " — schemaDB";
   }, [doc?.name, activeBundle, bundles]);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
@@ -341,7 +345,7 @@ function Workspace() {
   useEffect(() => {
     if (!modal) return;
     const dialog = document.querySelector<HTMLElement>("[role=dialog]");
-    const focusFrame=requestAnimationFrame(()=>{(dialog?.querySelector<HTMLElement>("input:not([disabled]),textarea,select") || dialog?.querySelector<HTMLElement>("button"))?.focus();});
+    const focusFrame=requestAnimationFrame(()=>{(dialog?.querySelector<HTMLElement>("input:not([disabled]),textarea,select") || dialog?.querySelector<HTMLElement>("button:not([disabled])"))?.focus();});
     const handle = (e: KeyboardEvent) => {
       if (e.key === "Escape") setModal("");
       if (e.key === "Tab" && dialog) {
@@ -973,12 +977,18 @@ function Workspace() {
           `${r.fromTable}.${r.fromFields.join(", ")} → ${r.toTable}.${r.toFields.join(", ")}`,
       },
       style: {
-        stroke: active || related ? "#3273dc" : "#93a2b3",
+        stroke: r.color || (active || related ? "#3273dc" : "#93a2b3"),
         strokeWidth: active || related ? 2.5 : 1.3,
         opacity: 1,
       },
     };
   });
+  const applyVisualColor = async (kind: 'table' | 'relationship', id: string, color: string) => {
+    const previous = latestCode.current;
+    const next = await setVisualColor(previous, kind, id, color);
+    if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen settings and try again.');
+    change(next);
+  };
   const focusSelection = (id: string) => {
     const table = model.tables.find((t) => t.id === id);
     const range = table && findTableRange(code, table.schema, table.name);
@@ -1049,7 +1059,7 @@ function Workspace() {
           <span className="logo">
             <img src="/favicon.svg" alt="" width="28" height="28" />
           </span>
-          dbdiagram{" "}
+          schemaDB{" "}
         </div>
         <span className="slash">/</span>
         <DiagramPicker
@@ -1546,6 +1556,7 @@ function Workspace() {
                 </span>
                 <small>{selectedRef.relation}</small>
               </div>
+              <AppearanceSettings key={selectedRef.id} label="Relationship color" color={selectedRef.color || '#93a2b3'} onApply={color => applyVisualColor('relationship', selectedRef.id, color)} />
               <button
                 aria-label="Clear relationship selection"
                 onClick={() => setSelectedEdge("")}
@@ -1558,6 +1569,8 @@ function Workspace() {
             <div className="selection-info">
               <Table2 size={14} />
               {model.tables.find((t) => t.id === selected)?.name}
+              <AppearanceSettings key={selected} label="Table header color" color={model.tables.find(t => t.id === selected)?.color || '#326d94'} onApply={color => applyVisualColor('table', selected, color)} />
+              <button aria-label="Table records" title="Table records" onClick={() => { setTableId(selected); setModal('records'); }}><Grid2X2 size={15} /></button>
               <button
                 onClick={() => {
                   setTableId(selected);
@@ -1603,7 +1616,13 @@ function Workspace() {
               : "Local workspace"}
         </span>
       </footer>
-      {modal && (
+      {modal === 'records' && model.tables.find(t => t.id === tableId) && <TableRecords key={tableId} table={model.tables.find(t => t.id === tableId)!} refs={model.refs} onClose={() => setModal('')} onApply={async (columns, rows) => {
+        const previous = latestCode.current;
+        const next = await setTableRecords(previous, tableId, columns, rows);
+        if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen records and try again.');
+        change(next);
+      }} />}
+      {modal && modal !== 'records' && (
         <div
           className="modal-overlay"
           onMouseDown={(e) => {
@@ -1851,11 +1870,11 @@ function Workspace() {
                   className="primary"
                   onClick={() =>
                     download(
-                      "dbdiagram.mcp.json",
+                      "schemaDB.mcp.json",
                       JSON.stringify(
                         {
                           mcpServers: {
-                            dbdiagram: {
+                            schemaDB: {
                               type: "http",
                               url: location.origin + "/api/mcp",
                             },

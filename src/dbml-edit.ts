@@ -143,3 +143,84 @@ export async function setAttachedNote(source:string,schema:string,tableName:stri
  database(next);
  return next;
 }
+
+export async function setVisualColor(source: string, kind: 'table' | 'relationship', id: string, color: string) {
+  if (!/^#[\da-f]{6}$/i.test(color)) throw new Error('Enter a six-digit hex color, such as #326d94.');
+  const { database } = await import('./schema');
+  const db = database(source);
+  const target: any = kind === 'table'
+    ? db.schemas.flatMap(s => s.tables).find(t => `${t.schema.name}.${t.name}` === id)
+    : db.schemas.flatMap(s => s.refs.map((r, i) => ({ ref: r, id: `${s.name}.ref${i}` }))).find(r => r.id === id)?.ref;
+  if (!target) throw new Error('The selected table or relationship no longer exists.');
+  let from = target.token.start.offset, to = target.token.end.offset;
+  let declaration = source.slice(from, to);
+  const key = kind === 'table' ? 'headercolor' : 'color';
+  if (kind === 'relationship' && /^ref\s*:\s*[<>-]/i.test(declaration)) {
+    const endpoints = target.endpoints.map((e: any) => `${JSON.stringify(e.schemaName || target.schema.name)}.${JSON.stringify(e.tableName)}.${e.fieldNames.length === 1 ? JSON.stringify(e.fieldNames[0]) : '(' + e.fieldNames.map((f: string) => JSON.stringify(f)).join(', ') + ')'}`);
+    const [a, b] = target.endpoints;
+    const relation = a.relation === '*' ? (b.relation === '*' ? '<>' : '>') : b.relation === '*' ? '<' : '-';
+    const leading = source.slice(0, from).match(/,\s*$/);
+    const trailing = source.slice(to).match(/^\s*,/);
+    if (leading) from -= leading[0].length;
+    else if (trailing) to += trailing[0].length;
+    const next = source.slice(0, from) + source.slice(to) + `\n\nRef: ${endpoints[0]} ${relation} ${endpoints[1]} [color: ${color}]\n`;
+    database(next);
+    return next;
+  }
+  const tokens = [...declaration.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'''[\s\S]*?'''|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|#[\da-f]+|[A-Za-z_][\w]*|[{}\[\]:]/gi)].filter(t => !t[0].startsWith('//') && !t[0].startsWith('/*'));
+  const boundary = kind === 'table' ? (tokens.find(t => t[0] === '{')?.index ?? declaration.length) : declaration.length;
+  const setting = tokens.findIndex((t, i) => t.index! < boundary && t[0].toLowerCase() === key && tokens[i + 1]?.[0] === ':');
+  if (setting >= 0) {
+    const value = tokens[setting + 2];
+    declaration = declaration.slice(0, value.index) + color + declaration.slice(value.index! + value[0].length);
+  } else {
+    const opening = tokens.find(t => t.index! < boundary && t[0] === '[');
+    const closing = tokens.find(t => t.index! < boundary && t[0] === ']');
+    if (opening && closing) {
+      const content = declaration.slice(opening.index! + 1, closing.index).trim();
+      declaration = declaration.slice(0, closing.index) + (content ? ', ' : '') + key + ': ' + color + declaration.slice(closing.index);
+    } else {
+      const position = kind === 'table' ? boundary : (tokens.find(t => t[0] === '}')?.index ?? declaration.length);
+      declaration = declaration.slice(0, position) + ` [${key}: ${color}] ` + declaration.slice(position);
+    }
+  }
+  const next = source.slice(0, from) + declaration + source.slice(to);
+  database(next);
+  return next;
+}
+
+export function recordLiteral(value: string, type: string) {
+  if (value === '') return 'null';
+  if (value.startsWith('`') && value.endsWith('`')) return value;
+  if (/^(?:boolean|bool)\b/i.test(type)) {
+    if (!/^(?:true|false|0|1)$/i.test(value.trim())) throw new Error('Boolean cells must be true, false, 0, or 1.');
+    return value.trim();
+  }
+  if (/^(?:smallint|bigint|integer|int\b|int[248]\b|serial|bigserial|decimal|numeric|real|float|double)/i.test(type)) {
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) throw new Error('Numeric cells must contain a number.');
+    return value.trim();
+  }
+  return "'" + value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r') + "'";
+}
+
+export async function setTableRecords(source: string, id: string, columns: string[], rows: string[][]) {
+  const { database } = await import('./schema');
+  const db = database(source);
+  const table = db.schemas.flatMap(s => s.tables).find(t => `${t.schema.name}.${t.name}` === id);
+  if (!table) throw new Error('Table no longer exists.');
+  if (!columns.length || columns.some(c => !table.fields.some(f => f.name === c)) || rows.some(r => r.length !== columns.length)) throw new Error('Records must match the selected table columns.');
+  const existing = table.records[0];
+  const prefix = `records ${JSON.stringify(table.schema.name)}.${JSON.stringify(table.name)}(${columns.map(c => JSON.stringify(c)).join(', ')})${existing?.example ? ' [example]' : ''}`;
+  const block = rows.length ? `${prefix} {\n${rows.map(r => '  ' + r.join(', ')).join('\n')}\n}` : '';
+  // Keep an existing nested block nested; preserve all schema text outside its source range.
+  const nested = existing && existing.token.start.offset > table.token.start.offset && existing.token.end.offset < table.token.end.offset;
+  const replacement = nested ? block.replace(/^records [^{]+/, `records (${columns.map(c => JSON.stringify(c)).join(', ')})${existing.example ? ' [example]' : ''} `) : block;
+  const next = existing
+    ? source.slice(0, existing.token.start.offset) + replacement + source.slice(existing.token.end.offset)
+    : source + (block ? '\n\n' + block + '\n' : '');
+  const checked = database(next).schemas.flatMap(s => s.tables).find(t => `${t.schema.name}.${t.name}` === id)?.records[0];
+  checked?.values.forEach(row => row.forEach((cell, i) => {
+    if (cell.value != null && cell.type !== 'expression') recordLiteral(String(cell.value), table.fields.find(f => f.name === columns[i])!.type.type_name);
+  }));
+  return next;
+}

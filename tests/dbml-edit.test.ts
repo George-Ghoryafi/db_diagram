@@ -1,7 +1,41 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Parser } from "@dbml/core";
-import { addIndex } from "../src/dbml-edit";
+import { addIndex, setVisualColor, setTableRecords, recordLiteral } from "../src/dbml-edit";
+test('visual colors preserve table settings and relationship constraints, including inline refs', async () => {
+  const source = `// keep\nTable a [note: 'headercolor: #111111 [x]'] { id int [pk] }\nTable b { aid int [not null, ref: > a.id] }\n`;
+  let next = await setVisualColor(source, 'table', 'public.a', '#336699');
+  next = await setVisualColor(next, 'relationship', 'public.ref0', '#ee7755');
+  let db = Parser.parse(next, 'dbmlv2');
+  assert.equal(db.schemas[0].tables[0].headerColor, '#336699');
+  assert.equal(db.schemas[0].tables[0].note, 'headercolor: #111111 [x]');
+  assert.equal(db.schemas[0].tables[1].fields[0].not_null, true);
+  assert.equal(db.schemas[0].refs[0].color, '#ee7755');
+  next = await setVisualColor(next, 'relationship', 'public.ref0', '#112233');
+  db = Parser.parse(next, 'dbmlv2');
+  assert.equal(db.schemas[0].refs.length, 1);
+  assert.equal(db.schemas[0].refs[0].color, '#112233');
+  const longRef = 'Table a { id int }\nTable b { aid int }\nRef named { b.aid > a.id }';
+  assert.equal(Parser.parse(await setVisualColor(longRef, 'relationship', 'public.ref0', '#445566'), 'dbmlv2').schemas[0].refs[0].color, '#445566');
+  await assert.rejects(setVisualColor(source, 'table', 'public.a', 'red'), /hex/);
+});
+
+test('records round trip typed values without changing tables or references', async () => {
+  const source = `Table users {\n id int [pk]\n name varchar\n enabled boolean\n created timestamp\n}\n// keep this\n`;
+  const rows = [['1', recordLiteral("O'Brien", 'varchar'), 'true', '`now()`'], ['2', "''", 'false', 'null']];
+  let next = await setTableRecords(source, 'public.users', ['id', 'name', 'enabled', 'created'], rows);
+  let db = Parser.parse(next, 'dbmlv2');
+  assert.equal(db.schemas[0].tables[0].records[0].values[0][1].value, "O'Brien");
+  assert.ok(next.startsWith(source));
+  next = await setTableRecords(next, 'public.users', ['id', 'name'], [['3', "'Alice'"]]);
+  db = Parser.parse(next, 'dbmlv2');
+  assert.equal(db.schemas[0].tables[0].records.length, 1);
+  assert.equal(db.schemas[0].tables[0].records[0].values[0][0].value, 3);
+  const nested = `Table sample {\n id int\n name varchar\n records [example] {\n 1, 'Alice'\n }\n}\n`;
+  const changed = await setTableRecords(nested, 'public.sample', ['id', 'name'], [['2', "'Bob'"]]);
+  assert.equal(Parser.parse(changed, 'dbmlv2').schemas[0].tables[0].records[0].example, true);
+  await assert.rejects(setTableRecords(source, 'public.users', ['id'], [["'invalid integer'"]]), /./);
+});
 test("adds indexes without damaging nested blocks or quoted braces", () => {
   for (const source of [
     "Table users {\n id int [pk]\n email varchar [note: '}']\n}",

@@ -5,7 +5,7 @@ import {
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 const keywords =
-  /^(table|tablegroup|ref|enum|project|note|indexes|pk|unique|not|null|increment|default|headercolor|color|as)$/i;
+  /^(table|tablegroup|ref|enum|project|note|indexes|records|example|pk|unique|not|null|increment|default|headercolor|color|as)$/i;
 const types =
   /^(int|integer|bigint|smallint|varchar|char|text|uuid|timestamp|date|boolean|decimal|numeric|float|double|jsonb?|serial)$/i;
 export const dbmlLanguage = StreamLanguage.define({

@@ -53,6 +53,7 @@ interface RawSchema {
   }[];
   refs: {
     name?: string;
+    color?: string;
     endpoints: {
       schemaName?: string;
       tableName: string;
@@ -68,7 +69,8 @@ interface RawSchema {
   }[];
 }
 export function parseSchema(text: string) {
-  const raw = database(text).export() as unknown as {
+  const db = database(text);
+  const raw = db.export() as unknown as {
     schemas: RawSchema[];
     notes: { name: string; content: string }[];
   };
@@ -85,6 +87,18 @@ export function parseSchema(text: string) {
         schema: schema.name,
         note: table.note || "",
         color: table.headerColor || "#355772",
+        records: (() => {
+          const records = db.schemas.find(s => s.name === schema.name)?.tables.find(t => t.name === table.name)?.records[0];
+          return records ? {
+            columns: records.columns,
+            example: !!records.example,
+            rows: records.values.map(row => row.map((cell: any) => ({
+              value: cell.value,
+              type: cell.type,
+              literal: text.slice(cell.token.start.offset, cell.token.end.offset),
+            }))),
+          } : null;
+        })(),
         fields: table.fields.map((field) => ({
           name: field.name,
           type: field.type.type_name,
@@ -102,6 +116,7 @@ export function parseSchema(text: string) {
         return {
           id: `${schema.name}.ref${index}`,
           name: ref.name || "",
+          color: ref.color || "",
           fromTable: `${from.schemaName || schema.name}.${from.tableName}`,
           fromFields: from.fieldNames,
           toTable: `${to.schemaName || schema.name}.${to.tableName}`,

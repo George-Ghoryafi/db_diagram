@@ -28,7 +28,7 @@ export type McpSchemaStore = {
   moveSchema(id: string, bundleId: string): ReturnType<SchemaStore["write"]>;
 };
 export function createSchemaMcp(store: McpSchemaStore) {
-  const server = new McpServer({ name: "dbdiagram", version: "1.2.0" });
+  const server = new McpServer({ name: "schemaDB", version: "1.2.0" });
   function result(value: unknown) {
     return {
       content: [

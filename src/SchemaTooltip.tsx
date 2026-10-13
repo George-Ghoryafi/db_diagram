@@ -15,6 +15,6 @@ export function SchemaTooltip({children,heading,content}:Props){
  },[open,heading,content]);
  return <span ref={anchor} className="schema-tooltip-anchor" tabIndex={0} aria-describedby={open?id:undefined} onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onKeyDown={e=>{if(e.key==='Escape'){setFocused(false);setHovered(false);}}}>
   {children}
-  {open&&createPortal(<div id={id} ref={popup} role="tooltip" className="schema-tooltip" style={position}><div className="schema-tooltip-heading">{heading}</div><div className="schema-tooltip-content">{content}</div></div>,document.body)}
+  {open&&createPortal(<div id={id} ref={popup} role="tooltip" className="schema-tooltip" style={{...position,zIndex:110}}><div className="schema-tooltip-heading">{heading}</div><div className="schema-tooltip-content">{content}</div></div>,document.body)}
  </span>;
 }

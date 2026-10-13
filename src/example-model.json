@@ -13,6 +13,7 @@
       "schema": "public",
       "note": "",
       "color": "#326d94",
+      "records": null,
       "fields": [
         {
           "name": "id",
@@ -55,6 +56,7 @@
       "schema": "public",
       "note": "",
       "color": "#326d94",
+      "records": null,
       "fields": [
         {
           "name": "id",
@@ -89,6 +91,7 @@
       "schema": "public",
       "note": "",
       "color": "#326d94",
+      "records": null,
       "fields": [
         {
           "name": "workspace_id",
@@ -139,6 +142,7 @@
       "schema": "public",
       "note": "",
       "color": "#3c877c",
+      "records": null,
       "fields": [
         {
           "name": "id",
@@ -181,6 +185,7 @@
       "schema": "public",
       "note": "",
       "color": "#3c877c",
+      "records": null,
       "fields": [
         {
           "name": "id",
@@ -245,6 +250,7 @@
     {
       "id": "public.ref0",
       "name": "workspace_members",
+      "color": "",
       "fromTable": "public.workspaces",
       "fromFields": [
         "id"
@@ -258,6 +264,7 @@
     {
       "id": "public.ref1",
       "name": "user_memberships",
+      "color": "",
       "fromTable": "public.users",
       "fromFields": [
         "id"
@@ -271,6 +278,7 @@
     {
       "id": "public.ref2",
       "name": "workspace_projects",
+      "color": "",
       "fromTable": "public.workspaces",
       "fromFields": [
         "id"
@@ -284,6 +292,7 @@
     {
       "id": "public.ref3",
       "name": "project_owner",
+      "color": "",
       "fromTable": "public.users",
       "fromFields": [
         "id"
@@ -297,6 +306,7 @@
     {
       "id": "public.ref4",
       "name": "project_tasks",
+      "color": "",
       "fromTable": "public.projects",
       "fromFields": [
         "id"
@@ -310,6 +320,7 @@
     {
       "id": "public.ref5",
       "name": "task_assignee",
+      "color": "",
       "fromTable": "public.users",
       "fromFields": [
         "id"
