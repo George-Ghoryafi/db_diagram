@@ -57,6 +57,7 @@ import {
   MessageSquare,
   Route,
   Focus,
+  LoaderCircle,
 } from "lucide-react";
 import { addIndex, setAttachedNote, setVisualColor, setTableRecords, findTableRange } from "./dbml-edit";
 import {
@@ -72,7 +73,6 @@ import { dbmlLanguage, dbmlColors } from "./dbml-language";
 import { defaultBundle, bundleColors, type Bundle } from "./bundles";
 import { SchemaTooltip } from "./SchemaTooltip";
 import { DiagramPicker } from "./DiagramPicker";
-import exampleModel from "./example-model.json";
 
 type Field = {
   name: string;
@@ -270,24 +270,12 @@ const initialExampleLayout = exampleLayoutForCanvas(
   window.innerWidth - Math.max(280, Math.min(400, window.innerWidth * 0.3)),
   window.innerHeight - 80,
 );
-const exampleNodes: Node[] = [
-  ...exampleModel.tables.map((table) => ({
-    id: table.id,
-    type: "table",
-    initialWidth: 260,
-    initialHeight:
-      33 + table.fields.length * 30 + (table.indexes.length ? 25 : 0),
-    position: initialExampleLayout[table.id],
-    data: { table },
-    zIndex: 1,
-  })),
-];
 function Workspace() {
-  const [docs, setDocs] = useState<Doc[]>([exampleDocument]),
-    [doc, setDoc] = useState<Doc | null>(exampleDocument),
-    [code, setCode] = useState(exampleDocument.dbml),
-    [model, setModel] = useState<Model>(exampleModel);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(exampleNodes),
+  const [docs, setDocs] = useState<Doc[]>([]),
+    [doc, setDoc] = useState<Doc | null>(null),
+    [code, setCode] = useState(""),
+    [model, setModel] = useState<Model>({ tables: [], refs: [], groups: [], notes: [] });
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]),
     [error, setError] = useState(""),
     [status, setStatus] = useState("Loading…"),
     [tab, setTab] = useState("DBML"),
@@ -313,6 +301,9 @@ function Workspace() {
     [canvasSearch, setCanvasSearch] = useState(""),
     [noteText, setNoteText] = useState(""),
     [noteField, setNoteField] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadVersion, setLoadVersion] = useState(0);
+  const loadRun = useRef(0);
   const [arranging, setArranging] = useState(false);
   const layoutRun = useRef(0);
   const layoutContext = useRef({ id: doc?.id, detail });
@@ -341,16 +332,16 @@ function Workspace() {
   useEffect(() => {
     const bundle =
       bundles.find((b) => b.id === activeBundle)?.name || "Shared diagrams";
-    document.title = doc?.name
+    document.title = loading ? "Loading diagram — schemaDB" : doc?.name
       ? doc.name + " · " + bundle + " — schemaDB"
       : bundle + " — schemaDB";
-  }, [doc?.name, activeBundle, bundles]);
+  }, [doc?.name, activeBundle, bundles, loading]);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
   const viewport = useViewport();
   const nodesInitialized = useNodesInitialized();
-  const saved = useRef(exampleDocument.dbml),
-    latestCode = useRef(exampleDocument.dbml),
+  const saved = useRef(""),
+    latestCode = useRef(""),
     saving = useRef(false),
     dirty = useRef(false),
     parseSeq = useRef(0),
@@ -431,8 +422,13 @@ function Workspace() {
       setError("Save or revert your edits before switching schemas.");
       return;
     }
+    const run = ++loadRun.current;
+    ++parseSeq.current;
+    setLoading(true);
+    setStatus("Loading diagram…");
     try {
       const d = await api("/schemas/" + id);
+      if (run !== loadRun.current) return;
       const untouchedExample =
         d.id === "welcome" &&
         d.dbml === exampleDocument.dbml &&
@@ -449,18 +445,15 @@ function Workspace() {
       setDoc(d);
       setActiveBundle(d.bundle_id || defaultBundle.id);
       setCode(d.dbml);
-      setStatus(
-        d.storage === "cloud"
-          ? "Saved to shared workspace"
-          : d.storage === "browser"
-            ? "Saved in this browser"
-            : "Saved locally",
-      );
+      setLoadVersion(version => version + 1);
       setError("");
       setSelected("");
       setSelectedEdge("");
     } catch (e) {
+      if (run !== loadRun.current) return;
       setError((e as Error).message);
+      setStatus("Could not load diagram");
+      setLoading(false);
     }
   };
   const chooseBundle = (id: string) => {
@@ -559,6 +552,8 @@ function Workspace() {
         setCode("");
         setModel({ tables: [], refs: [], groups: [], notes: [] });
         setNodes([]);
+        setLoading(false);
+        setStatus("Empty bundle");
         return;
       }
       if (documents.length) {
@@ -572,7 +567,9 @@ function Workspace() {
       });
       await refresh();
       await load(d.id);
-    })().catch((e) => setError(e.message));
+    })().catch((e) => {
+      setError(e.message); setStatus("Could not load workspace"); setLoading(false);
+    });
   }, []);
   useEffect(() => {
     if (!selectionReady.current) return;
@@ -592,6 +589,7 @@ function Workspace() {
           if (seq !== parseSeq.current) return;
           setModel(m);
           setError("");
+          if (loading) setStatus(doc.storage === "cloud" ? "Saved to shared workspace" : doc.storage === "browser" ? "Saved in this browser" : "Saved locally");
           setNodes((old) => {
             return m.tables
               .map<Node>((t, i) => {
@@ -637,10 +635,15 @@ function Workspace() {
         })
         .catch((e) => {
           if (seq === parseSeq.current) setError(e.message);
+        }).finally(() => {
+          if (seq === parseSeq.current) setLoading(false);
         });
     }, 250);
-    return () => clearTimeout(timer);
-  }, [code, doc?.id, doc?.revision]);
+    return () => {
+      clearTimeout(timer);
+      if (parseSeq.current === seq) ++parseSeq.current;
+    };
+  }, [code, doc?.id, doc?.revision, loadVersion]);
   const change = useCallback((value: string) => {
     latestCode.current = value;
     setCode(value);
@@ -1045,7 +1048,7 @@ function Workspace() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (modal || el.closest("input,textarea,select,[contenteditable=true],.appearance-settings"))
+      if (loading || modal || el.closest("input,textarea,select,[contenteditable=true],.appearance-settings"))
         return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -1067,7 +1070,7 @@ function Workspace() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, doc?.id]);
+  }, [modal, doc?.id, loading]);
   const focus = (id: string) => {
     setSelectedEdge("");
     setSelected(model.tables.some((t) => t.id === id) ? id : "");
@@ -1096,6 +1099,7 @@ function Workspace() {
           diagrams={docs}
           bundleId={activeBundle}
           diagramId={doc?.id}
+          loading={loading}
           onBundle={chooseBundle}
           onDiagram={load}
           onOpen={() => {
@@ -1124,31 +1128,32 @@ function Workspace() {
             setName("");
             setModal("new");
           }}
+          disabled={loading}
           title="New diagram"
         >
           <Plus size={16} />
         </button>
         <div className="header-spacer" />
         <span className="save-state">
-          <span className={dirty.current ? "dot amber" : "dot"} />
+          <span className={loading ? "dot muted" : error ? "dot red" : dirty.current ? "dot amber" : "dot"} />
           {status}
         </span>
-        <button className="header-button" onClick={() => setModal("agent")}>
+        <button className="header-button" disabled={loading} onClick={() => setModal("agent")}>
           <Terminal size={15} /> Agent access
         </button>
-        <button className="header-button" onClick={() => file.current?.click()}>
+        <button className="header-button" disabled={loading} onClick={() => file.current?.click()}>
           <Upload size={15} /> Import
         </button>
         <button
           className="header-button"
-          disabled={!doc}
+          disabled={!doc || loading}
           onClick={() => setModal("export")}
         >
           <Download size={15} /> Export
         </button>
         <button
           className="save-button"
-          disabled={!doc}
+          disabled={!doc || loading}
           onClick={() => void save()}
         >
           <Save size={14} /> Save
@@ -1165,8 +1170,12 @@ function Workspace() {
           }}
         />
       </header>
-      <main>
-        {editorVisible && doc && (
+      <main aria-busy={loading}>
+        {loading && editorVisible && <aside className="editor editor-loading" aria-label="Loading schema editor">
+          <div className="loading-editor-heading"><Code2 size={14} /><span>Loading schema</span></div>
+          <div className="loading-code" aria-hidden="true">{[72,48,61,84,56,69,42,78,53,65].map((width, i) => <span key={i} style={{ width: width + "%" }} />)}</div>
+        </aside>}
+        {!loading && editorVisible && doc && (
           <aside className="editor">
             <div className="tabs">
               {["DBML", "Tables", "Groups", "Indexes"].map((t) => (
@@ -1325,7 +1334,12 @@ function Workspace() {
           ref={canvasRef}
           className={"canvas " + (panMode ? "pan-mode" : "")}
         >
-          {!doc && (
+          {loading && <div className="canvas-loading" role="status" aria-live="polite">
+            <LoaderCircle size={26} aria-hidden="true" /><strong>Loading your diagram</strong><span>Getting your schema and saved layout ready…</span>
+          </div>}
+          {arranging && !loading && <div className="layout-progress" role="status"><LoaderCircle size={14} aria-hidden="true" />Arranging tables…</div>}
+          {!doc && !loading && error && <div className="empty-bundle"><AlertCircle size={28} /><h2>Could not load your workspace</h2><p>{error}</p><button className="primary" onClick={() => window.location.reload()}>Try again</button></div>}
+          {!doc && !loading && !error && (
             <div className="empty-bundle">
               <span
                 className="bundle-avatar"
@@ -1349,6 +1363,7 @@ function Workspace() {
               </button>
             </div>
           )}
+          <div className="canvas-content" inert={loading || !doc}>
           <div className="canvas-top">
             {!editorVisible && (
               <button
@@ -1577,11 +1592,12 @@ function Workspace() {
               <Layers size={17} />
             </button>
           </div>
+          </div>
         </section>
       </main>
       <footer>
         <span>
-          {error ? (
+          {loading ? <><LoaderCircle size={13} /> Loading diagram…</> : error ? (
             <>
               <AlertCircle size={13} />
               <span className="error">{error}</span>

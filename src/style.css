@@ -751,6 +751,21 @@ footer .error {
 .agent-manual summary { color: #60718a; font-size: 12px; cursor: pointer; }
 .agent-manual-actions { display: flex; gap: 12px; }
 .agent-setup .agent-status { font-size: 10px; margin: 0; color: #8894a5; }
+.editor-loading { background: #20252c; }
+.loading-editor-heading { display: flex; align-items: center; gap: 8px; padding: 17px 20px; border-bottom: 1px solid #ffffff0d; color: #8793a3; font-size: 12px; }
+.loading-code { padding: 24px 24px; display: flex; flex-direction: column; gap: 17px; }
+.loading-code span { display: block; height: 7px; border-radius: 3px; background: #ffffff0b; }
+.canvas-content { position: absolute; inset: 0; }
+.canvas-content[inert] { visibility: hidden; }
+.dot.muted { background: #a1adbb; }
+.dot.red { background: #c76e71; }
+.canvas-loading { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #f7f9fc; color: #7790ae; }
+.canvas-loading strong { color: #4b5f79; font-size: 14px; font-weight: 500; }
+.canvas-loading span { color: #8a98aa; font-size: 12px; text-align: center; padding: 0 20px; }
+.canvas-loading svg, .layout-progress svg { animation: loading-spin 1s linear infinite; }
+.layout-progress { position: absolute; z-index: 10; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid #dce5ef; border-radius: 6px; background: white; color: #607994; font-size: 12px; box-shadow: 0 2px 10px #22334d0a; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .canvas-loading svg, .layout-progress svg { animation: none; } }
 @media (max-width: 520px) {
   .agent-modal { padding: 20px; }
   .agent-choices { display: grid; grid-template-columns: 1fr 1fr; }

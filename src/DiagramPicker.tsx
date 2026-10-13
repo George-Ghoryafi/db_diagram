@@ -16,6 +16,7 @@ type Props = {
   diagrams: Diagram[];
   bundleId: string;
   diagramId?: string;
+  loading?: boolean;
   onBundle: (id: string) => void;
   onDiagram: (id: string) => Promise<void>;
   onNewBundle: () => void;
@@ -48,6 +49,7 @@ export function DiagramPicker(props: Props) {
     <>
       <button
         className="workspace-picker-trigger"
+        disabled={props.loading}
         aria-label="Choose bundle and diagram"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -58,7 +60,7 @@ export function DiagramPicker(props: Props) {
         </span>
         <span className="picker-breadcrumb">
           <span>{bundle?.name || "Shared diagrams"}</span>
-          <b>{selected?.name || "Choose a diagram"}</b>
+          <b>{props.loading ? "Loading diagram…" : selected?.name || "Choose a diagram"}</b>
         </span>
         <ChevronDown size={14} />
       </button>
