@@ -726,6 +726,36 @@ footer .error {
 .path {
   font-size: 11px;
 }
+.agent-modal { width: 640px; padding: 28px; }
+.agent-modal .modal-heading { margin-bottom: 8px; }
+.agent-setup .agent-intro { margin: 0 0 22px; color: #65748a; font-size: 13px; }
+.agent-choices { display: flex; gap: 4px; padding: 4px; background: #f2f5f9; border: 1px solid #e5eaf1; border-radius: 8px; }
+.agent-choices button { flex: 1; justify-content: center; padding: 9px 6px; font-size: 12px; border-radius: 5px; color: #65748a; white-space: nowrap; }
+.agent-choices button[aria-pressed="true"] { background: white; color: #2d65ac; box-shadow: 0 1px 4px #24365018; font-weight: 600; }
+.agent-instructions { padding: 22px 0 16px; }
+.agent-step { display: flex; align-items: center; gap: 8px; color: #50627c; font-size: 12px; margin-bottom: 12px; }
+.agent-step strong { display: flex; align-items: center; justify-content: space-between; flex: 1; font-weight: 500; }
+.agent-step span { font-size: 10px; font-weight: 400; color: #8894a5; }
+.agent-command { display: flex; align-items: flex-start; gap: 12px; padding: 14px; background: #f7f9fc; border: 1px solid #dce4ef; border-radius: 7px; }
+.agent-command code { flex: 1; min-width: 0; font: 12px/1.8 "SFMono-Regular", Consolas, monospace; color: #354963; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
+.agent-command button { flex-shrink: 0; padding: 5px 7px; color: #587397; font-size: 11px; }
+.agent-instructions p { margin: 10px 0 0; font-size: 11px; }
+.agent-install { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; background: #3273dc; color: white; text-decoration: none; padding: 10px 15px; border-radius: 6px; font-size: 12px; }
+.agent-install:hover { background: #2865c3; }
+.agent-prompt { border-top: 1px solid #e6ebf2; padding-top: 17px; }
+.agent-prompt > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.agent-prompt strong { font-size: 12px; color: #465872; font-weight: 500; }
+.agent-prompt button, .agent-manual-actions button { color: #587397; font-size: 11px; padding: 5px 7px; }
+.agent-prompt p { color: #65748a; font-size: 12px; margin: 7px 0 17px; }
+.agent-manual { border-top: 1px solid #e6ebf2; padding: 16px 0; }
+.agent-manual summary { color: #60718a; font-size: 12px; cursor: pointer; }
+.agent-manual-actions { display: flex; gap: 12px; }
+.agent-setup .agent-status { font-size: 10px; margin: 0; color: #8894a5; }
+@media (max-width: 520px) {
+  .agent-modal { padding: 20px; }
+  .agent-choices { display: grid; grid-template-columns: 1fr 1fr; }
+  .agent-command { flex-direction: column; gap: 6px; }
+}
 @media (max-width: 1100px) {
   header {
     gap: 8px;

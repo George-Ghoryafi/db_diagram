@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { routeRelationship, routeGeometry, type TableBounds } from "./edge-routing";
+import { AgentSetup } from "./AgentSetup";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { TableRecords, type RecordData } from "./TableRecords";
 import type { RecordFocus } from "./record-links";
@@ -1610,7 +1611,7 @@ function Workspace() {
           }}
         >
           <section
-            className="modal"
+            className={`modal${modal === "agent" && cloudAvailable ? " agent-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-label={modal}
@@ -1830,45 +1831,12 @@ function Workspace() {
                 <button className="primary" onClick={()=>void addNote()}>Apply note</button>
               </>
             ) : modal === "agent" && cloudAvailable ? (
-              <>
-                <p>
-                  Diagrams are public and organized into bundles. Your agent can
-                  list, create, read, edit, move, and export them.
-                </p>
-                <code className="path">{location.origin + "/api/mcp"}</code>
-                <p>
-                  Current bundle:{" "}
-                  <b>{bundles.find((b) => b.id === activeBundle)?.name}</b>
-                </p>
-                <code className="path">{activeBundle}</code>
-                <p>
-                  Use list_bundles to find bundle IDs. Pass bundle_id when
-                  creating a diagram, or use move_schema to organize an existing
-                  diagram.
-                </p>
-                <button
-                  className="primary"
-                  onClick={() =>
-                    download(
-                      "schemaDB.mcp.json",
-                      JSON.stringify(
-                        {
-                          mcpServers: {
-                            schemaDB: {
-                              type: "http",
-                              url: location.origin + "/api/mcp",
-                            },
-                          },
-                        },
-                        null,
-                        2,
-                      ),
-                    )
-                  }
-                >
-                  Download MCP config
-                </button>
-              </>
+              <AgentSetup
+                endpoint={location.origin + "/api/mcp"}
+                bundleName={bundles.find(b => b.id === activeBundle)?.name || "Shared diagrams"}
+                bundleId={activeBundle}
+                download={download}
+              />
             ) : modal === "agent" && doc?.storage === "browser" ? (
               <>
                 <p>
