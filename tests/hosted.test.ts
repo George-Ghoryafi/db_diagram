@@ -68,9 +68,14 @@ test("hosted API and remote MCP publicly share the same schema store", async () 
     const mixedDocument = JSON.parse((mixedRead.content as { text: string }[])[0].text);
     assert.equal(mixedDocument.model.storage.units[0].kind, 'blob');
     assert.equal(mixedDocument.model.storage.links[0].to.port, 'originals');
+    const vectorStorage = { ...mixedDocument.model.storage, units: [...mixedDocument.model.storage.units, { id: 'vectors', kind: 'vector', name: 'Semantic search', items: [{ id: 'chunks', name: 'document_chunks', dimensions: 3, metric: 'cosine', records: [{ id: 'chunk-1', vector: [0.1, 0, -0.2], metadata: { approved: false, score: 0, optional: null } }] }] }] };
+    const vectorSave = await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: mixedDocument.revision, storage: vectorStorage } });
+    assert.ok(!vectorSave.isError, JSON.stringify(vectorSave));
+    const vectorRead = JSON.parse(((await client.callTool({ name: 'read_schema', arguments: { id: 'remote-test' } })).content as { text: string }[])[0].text);
+    assert.deepEqual(vectorRead.model.storage.units[1].items[0].records[0].metadata, { approved: false, score: 0, optional: null });
     assert.ok(mixedDocument.dbml.startsWith(dbml));
     assert.equal((await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: document.revision, storage } })).isError, true);
-    assert.equal((await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: mixedDocument.revision, storage: { ...storage, links: [{ ...storage.links[0], from: { node: 'public.remote_test', port: 'missing' } }] } } })).isError, true);
+    assert.equal((await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: vectorRead.revision, storage: { ...storage, links: [{ ...storage.links[0], from: { node: 'public.remote_test', port: 'missing' } }] } } })).isError, true);
     const invalid = await client.callTool({
       name: "write_schema",
       arguments: { id: "bad", dbml: "Table broken {" },

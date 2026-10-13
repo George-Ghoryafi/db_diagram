@@ -4,6 +4,7 @@ export const storageKinds = {
   blob: { label: 'Object / BLOB storage', item: 'Bucket', plural: 'buckets', color: '#127c80' },
   document: { label: 'Document store', item: 'Collection', plural: 'collections', color: '#7858a5' },
   kv: { label: 'Key-value store', item: 'Keyspace', plural: 'keyspaces', color: '#b67624' },
+  vector: { label: 'Vector database', item: 'Index', plural: 'indexes', color: '#346eaa' },
 } as const;
 const id = z.string().regex(/^[a-zA-Z0-9_-]+$/, 'Use letters, numbers, underscores or hyphens for IDs.');
 const text = z.string().max(20000).default('');
@@ -11,10 +12,13 @@ const itemSchema = z.object({
   id, name: z.string().trim().min(1).max(120), note: text,
   access: z.enum(['private', 'public']).default('private'),
   keyPattern: text, contentType: text, ttl: text,
+  dimensions: z.number().int().positive().optional(),
+  metric: z.enum(['cosine', 'dot', 'euclidean']).optional(),
+  records: z.array(z.record(z.string(), z.json())).default([]),
   shape: z.string().default('').refine(value => { if (!value.trim()) return true; try { JSON.parse(value); return true; } catch { return false; } }, 'Document / value shape must be valid JSON.'),
 }).strict();
 const unitSchema = z.object({
-  id, name: z.string().trim().min(1).max(120), kind: z.enum(['blob', 'document', 'kv']),
+  id, name: z.string().trim().min(1).max(120), kind: z.enum(['blob', 'document', 'kv', 'vector']),
   provider: z.string().max(120).default(''), note: text,
   items: z.array(itemSchema).default([]),
 }).strict();
@@ -29,6 +33,7 @@ export type StorageUnit = z.infer<typeof unitSchema>;
 export type StorageItem = z.infer<typeof itemSchema>;
 export type StorageLink = z.infer<typeof linkSchema>;
 export type StorageModel = z.infer<typeof storageModelSchema>;
+export type StorageRecord = StorageItem['records'][number];
 export const emptyStorage: StorageModel = { version: 1, units: [], links: [] };
 export const storageNodeId = (id: string) => 'storage:' + id;
 
@@ -69,8 +74,32 @@ export function validateStorageModel(value: unknown): StorageModel {
   for (const unit of model.units) {
     unique(unit.items.map(item => item.id), 'item');
     unique(unit.items.map(item => item.name), storageKinds[unit.kind].item.toLowerCase());
+    for (const item of unit.items) validateStorageRecords(unit.kind, item, item.records);
   }
   return model;
+}
+
+export function validateStorageRecords(kind: StorageUnit['kind'], item: Pick<StorageItem, 'dimensions'>, records: unknown): StorageRecord[] {
+  const parsed = z.array(z.record(z.string(), z.json())).safeParse(records);
+  if (!parsed.success) throw new Error('Sample records must be a JSON array of objects.');
+  const rows = parsed.data;
+  if (kind === 'blob' || kind === 'kv') {
+    for (const row of rows) {
+      if (typeof row.key !== 'string' || !row.key.trim()) throw new Error('Each sample record needs a non-empty string key.');
+      if (kind === 'kv' && !Object.hasOwn(row, 'value')) throw new Error('Each key-value sample needs a value (null is allowed).');
+      if (kind === 'blob' && row.size_bytes !== undefined && (typeof row.size_bytes !== 'number' || row.size_bytes < 0 || !Number.isSafeInteger(row.size_bytes))) throw new Error('Object size_bytes must be a non-negative integer.');
+    }
+    if (new Set(rows.map(row => row.key)).size !== rows.length) throw new Error('Sample object / KV keys must be unique within an item.');
+  }
+  if (kind === 'vector') {
+    for (const row of rows) {
+      if (typeof row.id !== 'string' || !row.id.trim()) throw new Error('Each vector sample needs a non-empty string id.');
+      if (!Array.isArray(row.vector) || !row.vector.length || row.vector.some(value => typeof value !== 'number' || !Number.isFinite(value))) throw new Error('Each vector sample needs a non-empty array of finite numbers in vector.');
+      if (item.dimensions && row.vector.length !== item.dimensions) throw new Error(`Sample vectors must have ${item.dimensions} dimensions.`);
+    }
+    if (new Set(rows.map(row => row.id)).size !== rows.length) throw new Error('Sample vector IDs must be unique within an index.');
+  }
+  return rows;
 }
 
 // Recognize only actual top-level comments, never text inside DBML notes or strings.

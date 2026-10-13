@@ -29,7 +29,7 @@ export type McpSchemaStore = {
   moveSchema(id: string, bundleId: string): ReturnType<SchemaStore["write"]>;
 };
 export function createSchemaMcp(store: McpSchemaStore) {
-  const server = new McpServer({ name: "schemaDB", version: "1.3.0" });
+  const server = new McpServer({ name: "schemaDB", version: "1.4.0" });
   function result(value: unknown) {
     return {
       content: [
@@ -72,7 +72,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
     "read_schema",
     {
       description:
-        "Read DBML, revision, saved layout, and normalized tables, relationships, indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML.",
+        "Read DBML, revision, saved layout, and normalized tables, relationships, indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, vector databases with indexes, typed sample records, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML.",
       inputSchema: { id: z.string() },
     },
     ({ id }) =>
@@ -100,7 +100,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
   server.registerTool(
     "write_storage",
     {
-      description: "Replace the storage model of an existing diagram, preserving all SQL DBML. Read_schema first and supply its revision and model.storage. Storage model version is 1; units have stable IDs, kind blob/document/kv, name, provider, note, and items (buckets/collections/keyspaces). Items have id, name, access private/public, keyPattern, contentType, ttl, note, and shape (a JSON field map or JSON Schema string). Links have id, kind reference/sync/cache/flow, label, direction forward/both, from/to endpoints {node,port}. SQL nodes use qualified table IDs and column names; storage nodes use storage:<unit-id> and item IDs or <item-id>/<field.path> for nested document fields. Empty port targets the whole node. Non-SQL definitions persist in a portable @schemadb-storage DBML comment; SQL exports omit them. This models storage, it does not provision infrastructure.",
+      description: "Replace the storage model of an existing diagram, preserving all SQL DBML. Read_schema first and supply its revision and model.storage. Storage model version is 1; units have stable IDs, kind blob/document/kv/vector, name, provider, note, and items (buckets/collections/keyspaces/indexes). Items have id, name, access private/public, keyPattern, contentType, ttl, note, shape (a JSON field map or JSON Schema string), and records (a JSON array of objects). Preserve records when editing other item properties. Documents accept nested JSON objects. KV records require key and value. BLOB records require key and can include content_type, size_bytes and metadata. Vector indexes may specify dimensions and metric cosine/dot/euclidean; vector records require unique id and a numeric vector matching dimensions, with optional metadata. Links have id, kind reference/sync/cache/flow, label, direction forward/both, from/to endpoints {node,port}. SQL nodes use qualified table IDs and column names; storage nodes use storage:<unit-id> and item IDs or <item-id>/<field.path> for nested document fields. Empty port targets the whole node. Non-SQL definitions persist in a portable @schemadb-storage DBML comment; SQL exports omit them. This models storage, it does not provision infrastructure.",
       inputSchema: { id: z.string(), revision: z.string(), storage: storageModelSchema },
     },
     ({ id, revision, storage }) => run(async () => {

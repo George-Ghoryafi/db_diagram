@@ -131,3 +131,13 @@ Definitions are retained in a single top-level DBML comment:
 Store kinds are `blob`, `document` and `kv`. Item fields include `name`, `note`, `access`, `keyPattern`, `contentType`, `ttl` and `shape` (a JSON string). IDs are stable letters/numbers/hyphens/underscores. Storage node IDs are `storage:<unit-id>`; ports are item IDs or `<item-id>/<nested.field.path>` (arrays use `chunks[].text`). An empty port targets the whole node.
 
 **MCP:** `read_schema` returns `model.storage` alongside SQL tables. `write_storage({id, revision, storage})` replaces only this structured storage model and preserves all surrounding DBML; use the revision from the latest read. It validates IDs, JSON shapes and connection endpoints and rejects stale writes. The existing `write_schema` and `validate_schema` also support the comment representation. DBML import/export and version history retain it; SQL export intentionally contains SQL only. Standard dbdiagram/DBML readers ignore the extension and display only SQL tables.
+
+### Sample records and vector databases
+
+Use the records grid icon in a storage card's header or next to a bucket, collection, keyspace or index to view sample data. The records window switches between items, previews nested JSON in hover popouts, expands complete documents and exports JSON. **Edit JSON** and **Add record** preserve JSON types; apply the records and save the diagram to persist them.
+
+Each storage item has a `records` array of JSON objects. Document records can have any nested fields. KV records require a unique string `key` and a `value` of any JSON type. Object records require a unique string `key`; optional fields include `content_type`, non-negative integer `size_bytes`, and `metadata`. They describe sample objects, not uploaded files.
+
+The `vector` store kind contains indexes with optional positive integer `dimensions`, `metric` (`cosine`, `dot`, `euclidean`), and a metadata `shape`. Sample vector records use unique string `id`, a numeric `vector` array and optional `metadata`. If dimensions are set, sample vector lengths must match. Vector nodes use the same connections, layouts and storage persistence as other non-SQL nodes.
+
+MCP `read_schema` includes records and vector indexes in `model.storage`; `write_storage` validates and updates them with the current revision. Preserve existing item records when editing other properties. SQL exports remain unaffected.

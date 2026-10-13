@@ -1760,7 +1760,7 @@ button:disabled {
 .storage-edit-form textarea, .storage-edit-form input, .storage-edit-form select { width: 100%; border: 1px solid #d9e1e9; background: #fff; border-radius: 5px; padding: 9px 10px; color: #243649; font-size: 13px; }
 .storage-edit-form textarea { resize: vertical; min-height: 52px; }
 .storage-edit-form small { color: #8b97a7; font-size: 11px; }
-.storage-kind-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.storage-kind-options { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
 .storage-kind-options button { display: flex; align-items: center; gap: 8px; padding: 13px 10px; border: 1px solid #dce3ea; border-radius: 6px; color: #6b798d; background: #fff; font-size: 12px; text-align: left; }
 .storage-kind-options button[aria-pressed=true] { border-color: #188185; background: #edf7f7; color: #127c80; }
 .storage-kind-options button:disabled { opacity: 1; cursor: default; }
@@ -1788,3 +1788,20 @@ button:disabled {
 .storage-pattern-row svg { flex-shrink: 0; }
 .storage-pattern-row span { font-size: 9px; margin-left: auto; white-space: nowrap; }
 .storage-edge-name { color: #127c80; font-size: 11px; border-radius: 3px; }
+
+.storage-explorer-item-line { display: flex; align-items: center; gap: 8px; }
+.storage-explorer-item-line > .storage-explorer-item { flex: 1; min-width: 0; }
+.storage-explorer-item-line > button:last-child { color: #8aa4b2; padding: 5px; }
+.storage-item-records { color: #809ba5; padding: 4px 0 4px 4px; flex-shrink: 0; }
+.storage-item-records:hover { color: var(--storage-color); }
+.storage-records-item { display: flex; align-items: center; gap: 20px; padding: 8px 24px; border-bottom: 1px solid #e5eaf0; }
+.storage-records-item label { display: flex; align-items: center; gap: 10px; color: #8b97a7; font-size: 12px; }
+.storage-records-item select { min-width: 180px; border: 1px solid #dce4eb; border-radius: 5px; padding: 7px 9px; font: inherit; color: #334155; background: #fff; }
+.storage-records-item > span { font-size: 11px; color: #8a98aa; }
+.storage-records-editor { padding: 0 24px 20px; }
+.storage-records-editor > label { color: #687b91; font-size: 11px; }
+.storage-records-editor textarea { display: block; width: 100%; height: 280px; min-height: 150px; resize: vertical; margin-top: 7px; padding: 14px; border: 1px solid #dce5ed; border-radius: 6px; font: 12px/1.6 ui-monospace, SFMono-Regular, monospace; color: #334155; background: #f8fafc; }
+.storage-records-editor p { font-size: 11px; color: #8b97a7; margin: 9px 0 0; }
+.storage-record-value { display: inline-block; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; color: #346eaa; }
+.storage-record-json { max-height: 260px; overflow: auto; font: 12px/1.6 ui-monospace, SFMono-Regular, monospace; background: #f8fafc; padding: 12px; margin: 0; }
+@media(max-width:600px) { .storage-kind-options { grid-template-columns: repeat(2,1fr); } .storage-records-item { flex-wrap: wrap; gap: 8px; } }

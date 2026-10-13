@@ -81,6 +81,7 @@ import { dbmlLanguage, dbmlColors } from "./dbml-language";
 import { defaultBundle, bundleColors, type Bundle } from "./bundles";
 import { SchemaTooltip } from "./SchemaTooltip";
 import { DiagramPicker } from "./DiagramPicker";
+import { StorageRecords } from './StorageRecords';
 import { StorageNode, StoragePanel, StorageEditor, StorageLinkEditor } from './StorageUI';
 import { emptyStorage, readStorageModel, writeStorageModel, storageKinds, storageNodeId, storageNodeHeight, storageLinkIssue, storagePorts, type StorageModel, type StorageUnit, type StorageLink } from './storage-model';
 
@@ -330,6 +331,8 @@ function Workspace() {
     [unique, setUnique] = useState(false),
     [groupColor, setGroupColor] = useState("#537bad");
   const storage = model.storage || emptyStorage;
+  const [storageRecordFocus, setStorageRecordFocus] = useState<{ unit: string; item?: string }>();
+  const openStorageRecords = (unit: StorageUnit, item?: string) => { storageEditBase.current = latestCode.current; setStorageRecordFocus({ unit: unit.id, item }); setModal('storage-records'); };
   const [editingStore, setEditingStore] = useState<StorageUnit>();
   const [editingLink, setEditingLink] = useState<StorageLink>();
   const storageEditBase = useRef('');
@@ -999,7 +1002,7 @@ function Workspace() {
     }] as const;
   })), [model, detail, highlightedRefs]);
   const storageData = useMemo(() => new Map(storage.units.map(unit => [storageNodeId(unit.id), {
-    unit, detail, onEdit: () => openStore(unit),
+    unit, detail, onEdit: () => openStore(unit), onRecords: (item?: string) => openStorageRecords(unit, item),
     onPortHover: (port: string | null) => setHoveredField(current => port ? { tableId: storageNodeId(unit.id), field: port } : current?.tableId === storageNodeId(unit.id) ? null : current),
   }])), [storage.units, detail]);
   const displayedNodes = useMemo<Node[]>(() => nodes.map(n => ({ ...n, selected: n.id === selected, zIndex: 2, data: tableData.get(n.id) || storageData.get(n.id) || n.data })), [nodes, selected, tableData, storageData]);
@@ -1361,7 +1364,7 @@ function Workspace() {
                   <span>⌘S to save</span>
                 </div>
               </>
-            ) : tab === 'Storage' ? <StoragePanel model={storage} tables={model.tables} onCreate={() => openStore()} onEdit={openStore} onFocus={focus} onLink={openStorageLink} onDeleteLink={id => { void updateStorage({ ...readStorageModel(latestCode.current), links: readStorageModel(latestCode.current).links.filter(link => link.id !== id) }).catch(error => setError(error.message)); }} /> : (
+            ) : tab === 'Storage' ? <StoragePanel onRecords={openStorageRecords} model={storage} tables={model.tables} onCreate={() => openStore()} onEdit={openStore} onFocus={focus} onLink={openStorageLink} onDeleteLink={id => { void updateStorage({ ...readStorageModel(latestCode.current), links: readStorageModel(latestCode.current).links.filter(link => link.id !== id) }).catch(error => setError(error.message)); }} /> : (
               <div className="explorer">
                 <div className="explorer-title">
                   <h2>{tab}</h2>
@@ -1749,7 +1752,14 @@ function Workspace() {
         if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen records and try again.');
         change(next);
       }} />}
-      {modal && modal !== 'records' && (
+      {modal === 'storage-records' && storage.units.find(unit => unit.id === storageRecordFocus?.unit) && <StorageRecords key={storageRecordFocus!.unit} unit={storage.units.find(unit => unit.id === storageRecordFocus?.unit)!} initialItem={storageRecordFocus?.item} onClose={() => setModal('')} download={download} onApply={async (itemId, records) => {
+        const current = readStorageModel(latestCode.current);
+        const unit = current.units.find(unit => unit.id === storageRecordFocus?.unit);
+        if (!unit?.items.some(item => item.id === itemId)) throw new Error('This storage item was removed. Reopen the records window.');
+        await updateStorage({ ...current, units: current.units.map(value => value.id === unit.id ? { ...value, items: value.items.map(item => item.id === itemId ? { ...item, records } : item) } : value) }, storageEditBase.current);
+        storageEditBase.current = latestCode.current;
+      }} />}
+      {modal && modal !== 'records' && modal !== 'storage-records' && (
         <div
           className="modal-overlay"
           onMouseDown={(e) => {
