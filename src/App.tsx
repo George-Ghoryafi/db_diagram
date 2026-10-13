@@ -1369,6 +1369,7 @@ function Workspace() {
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={(changes) => {
+              if (selected) return;
               for (const c of changes) {
                 if (c.type === "select") {
                   if (c.selected) {
