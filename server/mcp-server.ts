@@ -29,7 +29,7 @@ export type McpSchemaStore = {
   moveSchema(id: string, bundleId: string): ReturnType<SchemaStore["write"]>;
 };
 export function createSchemaMcp(store: McpSchemaStore) {
-  const server = new McpServer({ name: "schemaDB", version: "1.4.0" });
+  const server = new McpServer({ name: "schemaDB", version: "1.5.0" });
   function result(value: unknown) {
     return {
       content: [
@@ -72,7 +72,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
     "read_schema",
     {
       description:
-        "Read DBML, revision, saved layout, and normalized tables, relationships, indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, vector databases with indexes, typed sample records, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML.",
+        "Read DBML, revision, saved layout, and normalized tables (including per-field checks, plain-language check summaries and indexes), relationships (including optional and bounded cardinalities), indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, vector databases with indexes, typed sample records, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML.",
       inputSchema: { id: z.string() },
     },
     ({ id }) =>
@@ -85,7 +85,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
     "write_schema",
     {
       description:
-        "Create or update a schema. When updating, provide the revision returned by read_schema to prevent overwriting newer edits. Preserve existing SQL and the @schemadb-storage comment unless explicitly changing them; use write_storage for structured non-SQL edits. DBML is validated before atomic save; previous versions are backed up. For creation, optionally provide bundle_id and name; otherwise use Shared diagrams. Use move_schema for existing diagrams.",
+        "Create or update a schema. When updating, provide the revision returned by read_schema to prevent overwriting newer edits. Preserve existing SQL, @schemadb-cardinality and @schemadb-storage comments unless explicitly changing them; use write_storage for structured non-SQL edits. Optional relationships use native DBML ? operators (e.g. >?). For numeric bounds preserve a top-level /* @schemadb-cardinality {\"version\":1,\"relationships\":{...}} */ JSON comment; keys are JSON.stringify([fromTable,fromFields,toTable,toFields]) matching normalized read_schema endpoints, values are {from:\"1\",to:\"2..5\"}. Numeric bounds are diagram metadata, not SQL enforcement. DBML is validated before atomic save; previous versions are backed up. For creation, optionally provide bundle_id and name; otherwise use Shared diagrams. Use move_schema for existing diagrams.",
       inputSchema: {
         id: z.string(),
         dbml: z.string(),

@@ -156,10 +156,11 @@ export async function setVisualColor(source: string, kind: 'table' | 'relationsh
   let from = target.token.start.offset, to = target.token.end.offset;
   let declaration = source.slice(from, to);
   const key = kind === 'table' ? 'headercolor' : 'color';
-  if (kind === 'relationship' && /^ref\s*:\s*[<>-]/i.test(declaration)) {
+  if (kind === 'relationship' && /^ref\s*:\s*[?<>-]/i.test(declaration)) {
     const endpoints = target.endpoints.map((e: any) => `${JSON.stringify(e.schemaName || target.schema.name)}.${JSON.stringify(e.tableName)}.${e.fieldNames.length === 1 ? JSON.stringify(e.fieldNames[0]) : '(' + e.fieldNames.map((f: string) => JSON.stringify(f)).join(', ') + ')'}`);
     const [a, b] = target.endpoints;
-    const relation = a.relation === '*' ? (b.relation === '*' ? '<>' : '>') : b.relation === '*' ? '<' : '-';
+    const { isMany, parseCardinality } = await import('./cardinality');
+    const relation = (a.relation !== '*' && parseCardinality(a.relation).minimum === 0 ? '?' : '') + (isMany(a.relation) ? (isMany(b.relation) ? '<>' : '>') : isMany(b.relation) ? '<' : '-') + (b.relation !== '*' && parseCardinality(b.relation).minimum === 0 ? '?' : '');
     const leading = source.slice(0, from).match(/,\s*$/);
     const trailing = source.slice(to).match(/^\s*,/);
     if (leading) from -= leading[0].length;
@@ -224,4 +225,26 @@ export async function setTableRecords(source: string, id: string, columns: strin
     if (cell.value != null && cell.type !== 'expression') recordLiteral(String(cell.value), table.fields.find(f => f.name === columns[i])!.type.type_name);
   }));
   return next;
+}
+
+export async function setRelationshipCardinality(source: string, id: string, from: string, to: string) {
+  const { database } = await import('./schema');
+  const { parseCardinality, isMany, readCardinalities, writeCardinalities, cardinalityKey } = await import('./cardinality');
+  const a = parseCardinality(from), b = parseCardinality(to);
+  const db = database(source);
+  const ref = db.schemas.flatMap(schema => schema.refs.map((ref, index) => ({ ref, id: `${schema.name}.ref${index}` }))).find(value => value.id === id)?.ref;
+  if (!ref) throw new Error('This relationship no longer exists.');
+  const start = ref.token.start.offset, end = ref.token.end.offset, declaration = source.slice(start, end);
+  const inline = /^ref\s*:/i.test(declaration);
+  const leftBound = inline ? b : a, rightBound = inline ? a : b;
+  const leftMany = isMany(inline ? to : from), rightMany = isMany(inline ? from : to);
+  const operator = (leftBound.minimum === 0 ? '?' : '') + (leftMany ? rightMany ? '<>' : '>' : rightMany ? '<' : '-') + (rightBound.minimum === 0 ? '?' : '');
+  const token = [...declaration.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[?<>-]+/g)].find(token => /^[?<>-]+$/.test(token[0]));
+  if (!token) throw new Error('Could not locate the relationship operator.');
+  const next = source.slice(0, start + token.index!) + operator + source.slice(start + token.index! + token[0].length);
+  const [left, right] = ref.endpoints;
+  const key = cardinalityKey({ fromTable: `${left.schemaName || ref.schema.name}.${left.tableName}`, fromFields: left.fieldNames, toTable: `${right.schemaName || ref.schema.name}.${right.tableName}`, toFields: right.fieldNames });
+  const result = writeCardinalities(next, { ...readCardinalities(source), [key]: { from, to } });
+  database(result);
+  return result;
 }

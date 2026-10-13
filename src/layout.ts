@@ -1,3 +1,4 @@
+import { isMany } from './cardinality';
 import type { ElkNode, LayoutOptions } from "elkjs/lib/elk-api";
 export type Arrangement = "left-right" | "pipeline" | "snowflake" | "compact" | "groups";
 type Item = { id: string; width: number; height: number; fields?: { name: string; y: number }[] };
@@ -91,7 +92,7 @@ export async function arrangeTables(items: Item[], refs: Ref[], groups: { tables
   const edges = refs.filter(ref => byId.has(ref.fromTable) && byId.has(ref.toTable)).map((ref, index) => {
     const from = endpoint(ref.fromTable, ref.fromFields?.[0]);
     const to = endpoint(ref.toTable, ref.toFields?.[0]);
-    const reverse = !ref.relation || ref.relation === "*:1";
+    const reverse = !ref.relation || (isMany(ref.relation.split(":")[0]) && !isMany(ref.relation.split(":")[1]));
     return { id: "ref:" + index, sources: [reverse ? to : from], targets: [reverse ? from : to] };
   });
   let children = [...nodes.values()];
@@ -128,7 +129,7 @@ export async function arrangeTables(items: Item[], refs: Ref[], groups: { tables
       // Use field ports when present; otherwise attach to the owning stage.
       const from = ref.fromFields?.[0] && byId.get(ref.fromTable)?.fields?.some(f => f.name === ref.fromFields![0]) ? endpoint(ref.fromTable, ref.fromFields[0]) : fromOwner;
       const to = ref.toFields?.[0] && byId.get(ref.toTable)?.fields?.some(f => f.name === ref.toFields![0]) ? endpoint(ref.toTable, ref.toFields[0]) : toOwner;
-      const reverse = !ref.relation || ref.relation === "*:1";
+      const reverse = !ref.relation || (isMany(ref.relation.split(":")[0]) && !isMany(ref.relation.split(":")[1]));
       return [{ id: "ref:" + index, sources: [reverse ? to : from], targets: [reverse ? from : to] }];
     });
   }

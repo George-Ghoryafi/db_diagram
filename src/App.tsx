@@ -62,8 +62,11 @@ import {
   LoaderCircle,
   Archive,
   Pencil,
+  ShieldCheck,
+  SlidersHorizontal,
+  ListFilter,
 } from "lucide-react";
-import { addIndex, setAttachedNote, setVisualColor, setTableRecords, findTableRange } from "./dbml-edit";
+import { addIndex, setAttachedNote, setVisualColor, setRelationshipCardinality, setTableRecords, findTableRange } from "./dbml-edit";
 import {
   relationshipPorts,
   relationshipSides,
@@ -85,7 +88,13 @@ import { StorageRecords } from './StorageRecords';
 import { StorageNode, StoragePanel, StorageEditor, StorageLinkEditor } from './StorageUI';
 import { emptyStorage, readStorageModel, writeStorageModel, storageKinds, storageNodeId, storageNodeHeight, storageLinkIssue, storagePorts, type StorageModel, type StorageUnit, type StorageLink } from './storage-model';
 
+import { CardinalityEditor } from "./CardinalityEditor";
+import { isMany, parseCardinality } from "./cardinality";
+import type { CheckRule } from "./checks";
+
 type Field = {
+  checks?: CheckRule[];
+  indexes?: { name?: string; unique?: boolean; pk?: boolean; type?: string; columns: { type: string; value: string }[] }[];
   name: string;
   type: string;
   pk?: boolean;
@@ -191,7 +200,7 @@ function TableNode({ id, data, selected }: NodeProps) {
     </div>
     {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
       const pk=primaryKeys.has(f.name),targets=foreignKeys[f.name] || [];
-      const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{f.note&&<><strong>Note</strong><p>{f.note}</p></>}</>;
+      const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{!!f.indexes?.length&&<div className="attribute-indexes"><strong>Indexes</strong>{f.indexes.map((index,i)=><div className="attribute-index" key={i}><div><ListFilter size={13}/><b>{index.name || (index.pk ? "Primary key index" : index.unique ? "Unique index" : "Index")}</b></div><small>{[index.pk ? "Primary key" : index.unique ? "Unique" : "Non-unique", index.type, index.columns.length>1 ? "Composite" : ""].filter(Boolean).join(" · ")}</small><code>{index.columns.map(column=>column.value).join(", ")}</code></div>)}</div>}{f.note&&<><strong>Note</strong><p>{f.note}</p></>}{!!f.checks?.length&&<div className="attribute-checks"><strong>Check constraints <span>{f.checks.length}</span></strong>{f.checks.map((rule,index)=><div className="check-rule" key={index}><div className="check-rule-summary"><ShieldCheck size={14}/><b>{rule.summary}</b></div>{rule.options&&<div className="check-values">{rule.options.map(value=><code key={value}>{value}</code>)}</div>}{rule.limits&&<div className="check-limits">{rule.limits.map(limit=><div key={limit.label}><span>{limit.label}</span><b>≤ {limit.maximum}</b></div>)}</div>}{rule.fields.length>1&&<small>Also applies to {rule.fields.filter(field=>field!==f.name).join(", ")}</small>}{rule.name&&<small className="check-rule-name">{rule.name}</small>}<pre className="check-expression">{rule.expression}</pre></div>)}{!f.not_null&&!pk&&<p className="check-null-hint">Nullable column; NULL handling depends on the expression.</p>}</div>}</>;
       return <SchemaTooltip key={f.name} heading={<><Table2 size={14}/><b>{f.name}</b><code>{f.type}</code></>} content={info}>
         <div onPointerEnter={() => (data.onFieldHover as (field: string | null) => void)(f.name)} onPointerLeave={() => (data.onFieldHover as (field: string | null) => void)(null)} className={"field "+(pk?"primary-field ":"")+(((data.highlightFields as string[])||[]).includes(f.name)?"field-highlight":"")}>
           <Handle type="target" position={Position.Left} id={f.name+"-in"}/>
@@ -199,6 +208,8 @@ function TableNode({ id, data, selected }: NodeProps) {
           {pk&&<span className="attribute-icon" title="Primary key" aria-label="Primary key"><KeyRound size={12}/></span>}
           {targets.length>0&&<span className="attribute-icon" title={"Foreign key: "+targets.join(", ")} aria-label="Foreign key"><Link2 size={12}/></span>}
           {f.note&&<span className="attribute-icon note-indicator" aria-label={"Note on "+f.name}><MessageSquare size={12}/></span>}
+          {!!f.indexes?.length&&<span className="attribute-icon index-indicator" aria-label={`${f.indexes.length} indexes on ${f.name}`}><ListFilter size={12}/></span>}
+          {!!f.checks?.length&&<span className="attribute-icon check-indicator" aria-label={`${f.checks.length} check constraints on ${f.name}`}><ShieldCheck size={12}/></span>}
           <span className="field-type">{f.type}</span>{f.not_null&&<span className="not-null-tag" aria-label="Not null">NN</span>}
           <Handle type="source" position={Position.Right} id={f.name+"-out"}/><Handle type="source" position={Position.Left} id={f.name+"-out-left"}/><Handle type="target" position={Position.Right} id={f.name+"-in-right"}/>
         </div>
@@ -271,11 +282,11 @@ function RelationshipEdge(props: EdgeProps) {
         { x: props.sourceX, y: sourceY, direction: props.sourcePosition === Position.Left ? -1 : 1, cardinality: parts[0], port: ports?.source },
         { x: props.targetX, y: targetY, direction: props.targetPosition === Position.Right ? 1 : -1, cardinality: parts[1], port: ports?.target },
       ].map(({ x, y, direction, cardinality, port }, index) => (port?.showSymbol || hovered) && (
+        <g key={index}>
         <path
-          key={index}
           className="edge-cardinality"
-          aria-label={cardinality === "*" ? "Many" : "One"}
-          d={cardinality === "*"
+          aria-label={"Cardinality " + cardinality}
+          d={isMany(cardinality)
             ? `M ${x + direction * 2} ${y - (port?.halfHeight || 4)} L ${x + direction * (port?.width || 10)} ${y} L ${x + direction * 2} ${y + (port?.halfHeight || 4)} M ${x + direction * 2} ${y} L ${x + direction * (port?.width || 10)} ${y}`
             : `M ${x + direction * ((port?.width || 10) / 2)} ${y - (port?.halfHeight || 4)} L ${x + direction * ((port?.width || 10) / 2)} ${y + (port?.halfHeight || 4)}`}
           fill="none"
@@ -283,6 +294,9 @@ function RelationshipEdge(props: EdgeProps) {
           strokeWidth={Math.min(highlighted ? 1.4 : 1, (port?.halfHeight || 4) * .4)}
           pointerEvents="none"
         />
+        {parseCardinality(cardinality).minimum === 0 && cardinality !== '*' && <circle cx={x + direction * ((port?.width || 10) + 4)} cy={y} r={2.6} fill="var(--canvas-bg, #f8fafc)" stroke={stroke} strokeWidth={1} pointerEvents="none"/>}
+        {cardinality !== '*' && cardinality !== '1' && cardinality !== '0..1' && cardinality !== '0..*' && <text className="edge-bound" x={x + direction * 16} y={y - 5} textAnchor={direction > 0 ? 'start' : 'end'} fill={stroke}>{cardinality}</text>}
+        </g>
       ))}
       {highlighted && direction !== "both" && <path className={`relationship-motion flow-${direction}`} d={path} fill="none" stroke={stroke} strokeWidth={3} pointerEvents="none" />}
       {highlighted && direction === "both" && <g className="relationship-particles" fill={stroke}>
@@ -290,7 +304,7 @@ function RelationshipEdge(props: EdgeProps) {
       </g>}
       <EdgeLabelRenderer>
         {!!props.data?.explicitSelected && <div className="edge-access-icons nodrag nopan" style={{transform:`translate(-50%,-100%) translate(${(props.data?.accessPoint as {x:number;y:number} | undefined)?.x ?? labelX}px,${((props.data?.accessPoint as {x:number;y:number} | undefined)?.y ?? labelY)-12}px)`}}>
-          {storageLink ? <button aria-label="Edit storage connection" onClick={props.data?.onEdit as () => void}><Pencil size={14}/></button> : <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#9b9ca4')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />}
+          {storageLink ? <button aria-label="Edit storage connection" onClick={props.data?.onEdit as () => void}><Pencil size={14}/></button> : <><button aria-label="Relationship cardinality" title="Relationship cardinality" onClick={props.data?.editCardinality as () => void}><SlidersHorizontal size={14}/></button><AppearanceSettings label="Relationship color" color={String(props.data?.color || '#9b9ca4')} onApply={props.data?.applyColor as (color: string) => Promise<void>} /></>}
         </div>}
         {(!!props.data?.explicitSelected || !!props.data?.showLabel) && (
           <span
@@ -1110,6 +1124,7 @@ function Workspace() {
         accessPoint: active ? edgeAccessPoint : undefined,
         applyColor: (color: string) => applyVisualColor('relationship', r.id, color),
         relation: r.relation,
+        editCardinality: () => { setSelectedEdge(r.id); setModal("cardinality"); },
         highlighted: related,
         explicitSelected:active,
         showLabel: !!r.storageLink || (related && !!r.name),
@@ -1774,7 +1789,7 @@ function Workspace() {
           >
             <div className="modal-heading">
               <h2>
-                {modal === "storage" ? (editingStore ? "Edit storage schema" : "Add storage schema") : modal === "storage-link" ? "Connect storage" : modal === "arrange"
+                {modal === "cardinality" ? "Relationship cardinality" : modal === "storage" ? (editingStore ? "Edit storage schema" : "Add storage schema") : modal === "storage-link" ? "Connect storage" : modal === "arrange"
                   ? "Auto arrange diagram"
                   : modal === "search"
                     ? "Search diagram"
@@ -1798,7 +1813,7 @@ function Workspace() {
                 <X size={18} />
               </button>
             </div>
-            {modal === 'storage' ? <StorageEditor key={editingStore?.id || 'new'} unit={editingStore} onClose={() => setModal('')} onSave={async unit => {
+            {modal === 'cardinality' ? (() => { const ref = model.refs.find(ref => ref.id === selectedEdge); return ref ? <CardinalityEditor fromLabel={ref.fromTable + '.' + ref.fromFields.join(', ')} toLabel={ref.toTable + '.' + ref.toFields.join(', ')} relation={ref.relation} onApply={async (from,to) => { const previous = latestCode.current; const next = await setRelationshipCardinality(previous, ref.id, from, to); if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen settings and try again.'); change(next); setModal(''); }} /> : <p>Select a relationship first.</p>; })() : modal === 'storage' ? <StorageEditor key={editingStore?.id || 'new'} unit={editingStore} onClose={() => setModal('')} onSave={async unit => {
               const current = readStorageModel(latestCode.current);
               await updateStorage({ ...current, units: current.units.some(existing => existing.id === unit.id) ? current.units.map(existing => existing.id === unit.id ? unit : existing) : [...current.units, unit] }, storageEditBase.current);
               setTab('Storage');

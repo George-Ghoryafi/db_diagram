@@ -1,3 +1,4 @@
+import { isMany } from './cardinality';
 export type Detail = "all" | "keys" | "names";
 export function visibleFields<T extends { name: string; pk?: boolean }>(
   fields: T[],
@@ -44,8 +45,8 @@ export function foreignKeyTargets(
  const targets:Record<string,string[]>={};
  for(const ref of refs){
   const [from,to]=ref.relation.split(':');
-  if(ref.fromTable===tableId && from==='*')ref.fromFields.forEach((field,index)=>(targets[field]??=[]).push(ref.toTable+'.'+ref.toFields[index]));
-  if(ref.toTable===tableId && (to==='*'||(from==='1'&&to==='1')))ref.toFields.forEach((field,index)=>(targets[field]??=[]).push(ref.fromTable+'.'+ref.fromFields[index]));
+  if(ref.fromTable===tableId && isMany(from))ref.fromFields.forEach((field,index)=>(targets[field]??=[]).push(ref.toTable+'.'+ref.toFields[index]));
+  if(ref.toTable===tableId && (isMany(to)||(!isMany(from)&&!isMany(to))))ref.toFields.forEach((field,index)=>(targets[field]??=[]).push(ref.fromTable+'.'+ref.fromFields[index]));
  }
  return targets;
 }
@@ -70,7 +71,7 @@ export function relationshipPorts(refs: { id: string; relation: string; sourceSi
     [...types.values()].forEach((connections, index) => {
       const owner = connections.find(ref => ref.id === selectedEdge) || connections.find(ref => highlighted?.has(ref.id)) || connections[0];
       for (const { id, side } of connections) ports[id][side] = {
-        offset: types.size > 1 ? -7 + index * 14 : 0,
+        offset: types.size > 1 ? (index - (types.size - 1) / 2) * Math.min(14, 20 / (types.size - 1)) : 0,
         halfHeight: types.size > 1 ? 3 : 4, width: types.size > 1 ? 8 : 10,
         showSymbol: id === owner.id,
       };
@@ -79,7 +80,9 @@ export function relationshipPorts(refs: { id: string; relation: string; sourceSi
   return ports;
 }
 export function relationshipFlow(relation: string) {
-  return relation === "1:*" ? "forward" : relation === "*:1" ? "reverse" : "both";
+  const [from, to] = relation.split(":");
+  if (!from || !to) return "both";
+  return !isMany(from) && isMany(to) ? "forward" : isMany(from) && !isMany(to) ? "reverse" : "both";
 }
 
 export function relationshipSides(from: { x: number; width: number }, to: { x: number; width: number }, self = false): { sourceSide: "left" | "right"; targetSide: "left" | "right" } {

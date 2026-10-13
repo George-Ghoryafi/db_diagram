@@ -103,14 +103,14 @@ export function validateStorageRecords(kind: StorageUnit['kind'], item: Pick<Sto
 }
 
 // Recognize only actual top-level comments, never text inside DBML notes or strings.
-export function storageBlock(source: string) {
+export function storageBlock(source: string, marker = "@schemadb-storage") {
   let depth = 0;
   let block: { from: number; to: number; json: string } | undefined;
   for (const token of source.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'''[\s\S]*?'''|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[{}]/g)) {
-    const match = depth === 0 && /^\/\*\s*@schemadb-storage\s+([\s\S]*?)\*\/$/.exec(token[0]);
-    if (match) {
-      if (block) throw new Error('Storage definition: keep only one @schemadb-storage block.');
-      block = { from: token.index!, to: token.index! + token[0].length, json: match[1] };
+    const match = depth === 0 && /^\/\*\s*(@schemadb-[\w-]+)\s+([\s\S]*?)\*\/$/.exec(token[0]);
+    if (match && match[1] === marker) {
+      if (block) throw new Error('Storage definition: keep only one ' + marker + ' block.');
+      block = { from: token.index!, to: token.index! + token[0].length, json: match[2] };
     }
     if (token[0] === '{') depth++;
     if (token[0] === '}') depth--;

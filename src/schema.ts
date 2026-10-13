@@ -1,5 +1,7 @@
 import { Parser, ModelExporter } from "@dbml/core";
 import { readStorageModel } from './storage-model.js';
+import { checkRule } from './checks.js';
+import { readCardinalities, cardinalityKey } from './cardinality.js';
 
 export class SchemaError extends Error {
   constructor(
@@ -73,8 +75,8 @@ interface RawSchema {
 }
 export function parseSchema(text: string) {
   const db = database(text);
-  let storage;
-  try { storage = readStorageModel(text); } catch (error) { throw new SchemaError(errorMessage(error)); }
+  let storage, cardinalities;
+  try { storage = readStorageModel(text); cardinalities = readCardinalities(text); } catch (error) { throw new SchemaError(errorMessage(error)); }
   const raw = db.export() as unknown as {
     schemas: RawSchema[];
     notes: { name: string; content: string }[];
@@ -87,11 +89,16 @@ export function parseSchema(text: string) {
       content: note.content,
     })),
     tables: raw.schemas.flatMap((schema) =>
-      schema.tables.map((table) => ({
+      schema.tables.map((table) => {
+        const source = db.schemas.find(s => s.name === schema.name)!.tables.find(t => t.name === table.name)!;
+        const checks = [...source.checks.map(check => checkRule(check, table.fields.map(field => field.name))), ...source.fields.flatMap(field => field.checks.map(check => checkRule(check, table.fields.map(field => field.name), field.name)))];
+        const indexedFields = table.indexes.map(index => ({ index, fields: new Set(index.columns.flatMap(column => column.type === "column" ? [column.value] : checkRule({ expression: column.value }, table.fields.map(field => field.name)).fields)) }));
+        return ({
         id: `${schema.name}.${table.name}`,
         name: table.name,
         schema: schema.name,
         note: table.note || "",
+        checks,
         color: table.headerColor || "#316896",
         records: (() => {
           const records = db.schemas.find(s => s.name === schema.name)?.tables.find(t => t.name === table.name)?.records[0];
@@ -112,13 +119,16 @@ export function parseSchema(text: string) {
           unique: !!field.unique,
           not_null: !!field.not_null,
           note: field.note || "",
+          checks: checks.filter(check => check.fields.includes(field.name)),
+          indexes: indexedFields.filter(index => index.fields.has(field.name)).map(value => value.index),
         })),
         indexes: table.indexes,
-      })),
+      }); }),
     ),
     refs: raw.schemas.flatMap((schema) =>
       schema.refs.map((ref, index) => {
         const [from, to] = ref.endpoints;
+        const bounds = cardinalities[cardinalityKey({ fromTable: `${from.schemaName || schema.name}.${from.tableName}`, fromFields: from.fieldNames, toTable: `${to.schemaName || schema.name}.${to.tableName}`, toFields: to.fieldNames })];
         return {
           id: `${schema.name}.ref${index}`,
           name: ref.name || "",
@@ -127,7 +137,7 @@ export function parseSchema(text: string) {
           fromFields: from.fieldNames,
           toTable: `${to.schemaName || schema.name}.${to.tableName}`,
           toFields: to.fieldNames,
-          relation: `${from.relation}:${to.relation}`,
+          relation: bounds ? `${bounds.from}:${bounds.to}` : `${from.relation}:${to.relation}`,
         };
       }),
     ),

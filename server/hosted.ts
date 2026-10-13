@@ -27,7 +27,7 @@ export function createHostedApp(store: () => HostedStore) {
       configured: !!(
         process.env.DATABASE_URL || process.env.db_diagram_DATABASE_URL
       ),
-      version: "1.4.0",
+      version: "1.5.0",
     }),
   );
   app.use("/api", (req, res, next) => {

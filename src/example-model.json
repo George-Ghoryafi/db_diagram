@@ -17,6 +17,7 @@
       "name": "users",
       "schema": "public",
       "note": "",
+      "checks": [],
       "color": "#326d94",
       "records": null,
       "fields": [
@@ -26,7 +27,9 @@
           "pk": true,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "name",
@@ -34,7 +37,9 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "email",
@@ -42,7 +47,9 @@
           "pk": false,
           "unique": true,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "created_at",
@@ -50,7 +57,9 @@
           "pk": false,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         }
       ],
       "indexes": []
@@ -60,6 +69,7 @@
       "name": "workspaces",
       "schema": "public",
       "note": "",
+      "checks": [],
       "color": "#326d94",
       "records": null,
       "fields": [
@@ -69,7 +79,9 @@
           "pk": true,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "name",
@@ -77,7 +89,9 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "slug",
@@ -85,7 +99,9 @@
           "pk": false,
           "unique": true,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         }
       ],
       "indexes": []
@@ -95,6 +111,7 @@
       "name": "memberships",
       "schema": "public",
       "note": "",
+      "checks": [],
       "color": "#326d94",
       "records": null,
       "fields": [
@@ -104,7 +121,25 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": [
+            {
+              "name": "membership_pk",
+              "pk": true,
+              "note": null,
+              "columns": [
+                {
+                  "type": "column",
+                  "value": "workspace_id"
+                },
+                {
+                  "type": "column",
+                  "value": "user_id"
+                }
+              ]
+            }
+          ]
         },
         {
           "name": "user_id",
@@ -112,7 +147,25 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": [
+            {
+              "name": "membership_pk",
+              "pk": true,
+              "note": null,
+              "columns": [
+                {
+                  "type": "column",
+                  "value": "workspace_id"
+                },
+                {
+                  "type": "column",
+                  "value": "user_id"
+                }
+              ]
+            }
+          ]
         },
         {
           "name": "role",
@@ -120,7 +173,9 @@
           "pk": false,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         }
       ],
       "indexes": [
@@ -146,6 +201,7 @@
       "name": "projects",
       "schema": "public",
       "note": "",
+      "checks": [],
       "color": "#3c877c",
       "records": null,
       "fields": [
@@ -155,7 +211,9 @@
           "pk": true,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "workspace_id",
@@ -163,7 +221,9 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "owner_id",
@@ -171,7 +231,9 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "name",
@@ -179,7 +241,9 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         }
       ],
       "indexes": []
@@ -189,6 +253,7 @@
       "name": "tasks",
       "schema": "public",
       "note": "",
+      "checks": [],
       "color": "#3c877c",
       "records": null,
       "fields": [
@@ -198,7 +263,9 @@
           "pk": true,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "project_id",
@@ -206,7 +273,24 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": [
+            {
+              "name": "tasks_by_project_status",
+              "note": null,
+              "columns": [
+                {
+                  "type": "column",
+                  "value": "project_id"
+                },
+                {
+                  "type": "column",
+                  "value": "status"
+                }
+              ]
+            }
+          ]
         },
         {
           "name": "assignee_id",
@@ -214,7 +298,9 @@
           "pk": false,
           "unique": false,
           "not_null": false,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "title",
@@ -222,7 +308,9 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": "A short, actionable task title."
+          "note": "A short, actionable task title.",
+          "checks": [],
+          "indexes": []
         },
         {
           "name": "status",
@@ -230,7 +318,24 @@
           "pk": false,
           "unique": false,
           "not_null": true,
-          "note": ""
+          "note": "",
+          "checks": [],
+          "indexes": [
+            {
+              "name": "tasks_by_project_status",
+              "note": null,
+              "columns": [
+                {
+                  "type": "column",
+                  "value": "project_id"
+                },
+                {
+                  "type": "column",
+                  "value": "status"
+                }
+              ]
+            }
+          ]
         }
       ],
       "indexes": [

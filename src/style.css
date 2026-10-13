@@ -1805,3 +1805,38 @@ button:disabled {
 .storage-record-value { display: inline-block; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; color: #346eaa; }
 .storage-record-json { max-height: 260px; overflow: auto; font: 12px/1.6 ui-monospace, SFMono-Regular, monospace; background: #f8fafc; padding: 12px; margin: 0; }
 @media(max-width:600px) { .storage-kind-options { grid-template-columns: repeat(2,1fr); } .storage-records-item { flex-wrap: wrap; gap: 8px; } }
+
+.check-indicator { color: #488b78; }
+.attribute-checks { margin-top: 12px; }
+.attribute-checks > strong { display: flex; align-items: center; justify-content: space-between; }
+.attribute-checks > strong > span { background: #eaf3ef; color: #397662; border-radius: 4px; padding: 0 5px; font-size: 10px; }
+.check-rule { border: 1px solid #dde8e2; border-radius: 6px; padding: 10px; margin-top: 8px; background: #f8fbf9; }
+.check-rule-summary { display: flex; gap: 6px; align-items: flex-start; color: #386853; line-height: 1.5; }
+.check-rule-summary svg { flex-shrink: 0; margin-top: 2px; }
+.check-rule-summary b { font-weight: 600; }
+.check-rule small { display: block; font-size: 10px; color: #708579; overflow-wrap: anywhere; margin-top: 6px; }
+.check-values { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.check-values code { background: #e7f0eb; border: 1px solid #d4e4db; border-radius: 4px; padding: 1px 6px; color: #35664f; font-size: 11px; }
+.check-limits { margin-top: 8px; border-top: 1px solid #e1eae5; }
+.check-limits > div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid #e1eae5; }
+.check-limits b { font-variant-numeric: tabular-nums; color: #386853; }
+.schema-tooltip .check-expression { color: #64766c; font: 10px/1.5 ui-monospace, monospace; padding-top: 8px; border-top: 1px solid #e1eae5; max-height: none; }
+.schema-tooltip .check-null-hint { font-size: 10px; color: #819087; }
+.edge-bound { font: 9px ui-monospace, monospace; pointer-events: none; paint-order: stroke; stroke: #f8fafc; stroke-width: 3px; }
+.cardinality-form p { color: #77879b; font-size: 12px; line-height: 1.6; }
+.cardinality-endpoints { display: grid; gap: 16px; margin: 20px 0; }
+.cardinality-endpoints label { display: grid; gap: 8px; }
+.cardinality-endpoints b { font-size: 12px; overflow-wrap: anywhere; }
+.cardinality-endpoints input { width: 100%; padding: 9px 12px; border: 1px solid #d9e2ec; border-radius: 5px; font: 14px ui-monospace, monospace; }
+.cardinality-presets { display: flex; gap: 6px; }
+.cardinality-presets button { padding: 4px 10px; border: 1px solid #dce4ed; border-radius: 4px; color: #718196; font: 11px ui-monospace, monospace; }
+.cardinality-presets button[aria-pressed=true] { color: #2e66aa; border-color: #93b4dc; background: #edf4fd; }
+.cardinality-form small { font-size: 11px; color: #8391a3; }
+.index-indicator { color: #7b63a6; }
+.attribute-indexes { margin-top: 10px; }
+.attribute-index { margin-top: 6px; padding: 8px 10px; background: #f7f5fb; border: 1px solid #e4dfef; border-radius: 5px; }
+.attribute-index > div { display: flex; gap: 6px; color: #715991; align-items: center; }
+.attribute-index b { font-size: 11px; overflow-wrap: anywhere; }
+.attribute-index svg { flex-shrink: 0; }
+.attribute-index small { display: block; font-size: 10px; color: #8b809c; margin-top: 3px; }
+.attribute-index > code { display: block; font-size: 10px; overflow-wrap: anywhere; margin-top: 3px; color: #79668e; }

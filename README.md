@@ -141,3 +141,9 @@ Each storage item has a `records` array of JSON objects. Document records can ha
 The `vector` store kind contains indexes with optional positive integer `dimensions`, `metric` (`cosine`, `dot`, `euclidean`), and a metadata `shape`. Sample vector records use unique string `id`, a numeric `vector` array and optional `metadata`. If dimensions are set, sample vector lengths must match. Vector nodes use the same connections, layouts and storage persistence as other non-SQL nodes.
 
 MCP `read_schema` includes records and vector indexes in `model.storage`; `write_storage` validates and updates them with the current revision. Preserve existing item records when editing other properties. SQL exports remain unaffected.
+
+### Checks, indexes and bounded relationships
+
+Canvas attributes show a shield for SQL checks and an index marker for explicit indexes, including composite and expression indexes. Hover or keyboard-focus a row to see named constraints, recognized ranges, allowed values, character limits and CASE-based maxima, alongside the exact SQL. Unrecognized SQL stays visible without speculative translation.
+
+Select an SQL edge, then its cardinality button to choose optional or custom endpoint bounds such as `0..1`, `1..*` or `2..5`. Native DBML `?` relationship operators remain portable. Additional numeric bounds live in a top-level `@schemadb-cardinality` JSON comment; other DBML tools ignore this metadata and SQL exports retain only the base relationship. Bounds describe the design and do not enforce counts in a database. Agents can read normalized relations and edit the DBML through `write_schema`, preserving both schemaDB metadata comments.
