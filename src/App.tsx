@@ -362,12 +362,15 @@ function Workspace() {
       if (e.key === "Tab" && dialog) {
         const items = Array.from(
           dialog.querySelectorAll<HTMLElement>(
-            "button,input,textarea,select,a[href]",
+            'button,input,textarea,select,a[href],[tabindex]:not([tabindex="-1"])',
           ),
         ).filter((el) => !el.hasAttribute("disabled"));
         const first = items[0],
           last = items.at(-1);
-        if (e.shiftKey && document.activeElement === first) {
+        if (dialog.contains(document.activeElement) && !items.includes(document.activeElement as HTMLElement)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first)?.focus();
+        } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last?.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
