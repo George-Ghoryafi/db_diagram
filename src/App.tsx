@@ -48,14 +48,25 @@ import {
   Hand,
   Grid2X2,
   StickyNote,
+  Link2,
+  MessageSquare,
   Route,
   Focus,
 } from "lucide-react";
-import { addIndex, replaceNote, findTableRange } from "./dbml-edit";
-import { visibleFields, matchesSearch, type Detail } from "./canvas";
+import { addIndex, setAttachedNote, findTableRange } from "./dbml-edit";
+import {
+  highlightedRelationships,
+  foreignKeyTargets,
+  visibleFields,
+  matchesSearch,
+  type Detail,
+} from "./canvas";
 import { arrangeTables, type Arrangement } from "./layout";
 import { exampleDocument, exampleLayoutForCanvas } from "./example";
 import { dbmlLanguage, dbmlColors } from "./dbml-language";
+import { defaultBundle, bundleColors, type Bundle } from "./bundles";
+import { SchemaTooltip } from "./SchemaTooltip";
+import { DiagramPicker } from "./DiagramPicker";
 import exampleModel from "./example-model.json";
 
 type Field = {
@@ -97,8 +108,8 @@ type Doc = {
   revision: string;
   layout: Record<string, { x: number; y: number }>;
   storage?: "browser" | "cloud";
+  bundle_id?: string;
 };
-const accessKey = localStorage.getItem("dbdiagram.access-key") || "";
 let browserMode = false;
 async function api(
   path: string,
@@ -111,15 +122,13 @@ async function api(
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(accessKey ? { Authorization: "Bearer " + accessKey } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (
     path === "/schemas" &&
     method === "GET" &&
-    ((r.status === 401 && !accessKey) ||
-      r.status === 404 ||
+    (r.status === 404 ||
       (r.ok && r.headers.get("content-type")?.includes("text/html")))
   ) {
     browserMode = true;
@@ -146,65 +155,31 @@ function TableNode({ id, data, selected }: NodeProps) {
   const t = data.table as Table;
   const updateInternals = useUpdateNodeInternals();
   useEffect(() => updateInternals(id), [id, data.detail, t.fields]);
-  return (
-    <div className={"table-node " + (selected ? "selected" : "")}>
-      <div
-        className="table-title"
-        title={t.note}
-        style={{ background: t.color || "#326d94" }}
-      >
-        <Table2 size={14} />
-        <b>
-          {t.schema === "public" ? "" : t.schema + "."}
-          {t.name}
-        </b>
-        <span>{t.fields.length}</span>
-        {data.detail === "names" && (
-          <>
-            <Handle type="target" position={Position.Left} id="header-in" />
-            <Handle type="source" position={Position.Right} id="header-out" />
-          </>
-        )}
-      </div>
-      {visibleFields(
-        t.fields,
-        (data.detail as Detail) || "all",
-        (data.keys as string[]) || [],
-      ).map((f) => (
-        <div
-          className={
-            "field " +
-            (((data.highlightFields as string[]) || []).includes(f.name)
-              ? "field-highlight"
-              : "")
-          }
-          key={f.name}
-          title={f.note}
-        >
-          <Handle type="target" position={Position.Left} id={f.name + "-in"} />
-          <span className="field-key">
-            {f.pk ? <KeyRound size={12} /> : f.unique ? <span>◇</span> : null}
-          </span>
-          <span className="field-name">
-            {f.name}
-            {f.not_null && <sup>*</sup>}
-          </span>
-          <span className="field-type">{f.type}</span>
-          <Handle
-            type="source"
-            position={Position.Right}
-            id={f.name + "-out"}
-          />
-        </div>
-      ))}
-      {data.detail !== "names" && t.indexes.length > 0 && (
-        <div className="index-row">
-          <KeyRound size={11} />
-          {t.indexes.length} {t.indexes.length === 1 ? "index" : "indexes"}
-        </div>
-      )}
+  const primaryKeys=new Set([...t.fields.filter(f=>f.pk).map(f=>f.name),...t.indexes.filter(i=>i.pk).flatMap(i=>i.columns.filter((c:any)=>c.type==="column").map((c:any)=>c.value))]);
+  const foreignKeys=(data.foreignKeys || {}) as Record<string,string[]>;
+  return <div className={"table-node "+(selected?"selected":"")}>
+    <div className="table-title" style={{background:t.color || "#326d94"}}>
+      <b>{t.schema==="public"?"":t.schema+"."}{t.name}</b>
+      {t.note&&<SchemaTooltip heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><p>{t.note}</p></>}><span className="note-indicator" aria-label={"Note on "+t.name}><MessageSquare size={13}/></span></SchemaTooltip>}
+      {data.detail==="names"&&<><Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/></>}
     </div>
-  );
+    {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
+      const pk=primaryKeys.has(f.name),targets=foreignKeys[f.name] || [];
+      const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{f.note&&<><strong>Note</strong><p>{f.note}</p></>}</>;
+      return <SchemaTooltip key={f.name} heading={<><Table2 size={14}/><b>{f.name}</b><code>{f.type}</code></>} content={info}>
+        <div className={"field "+(pk?"primary-field ":"")+(((data.highlightFields as string[])||[]).includes(f.name)?"field-highlight":"")}>
+          <Handle type="target" position={Position.Left} id={f.name+"-in"}/>
+          <span className="field-name">{f.name}</span>
+          {pk&&<span className="attribute-icon" title="Primary key" aria-label="Primary key"><KeyRound size={12}/></span>}
+          {targets.length>0&&<span className="attribute-icon" title={"Foreign key: "+targets.join(", ")} aria-label="Foreign key"><Link2 size={12}/></span>}
+          {f.note&&<span className="attribute-icon note-indicator" aria-label={"Note on "+f.name}><MessageSquare size={12}/></span>}
+          <span className="field-type">{f.type}</span>{f.not_null&&<span className="not-null-tag" aria-label="Not null">NN</span>}
+          <Handle type="source" position={Position.Right} id={f.name+"-out"}/>
+        </div>
+      </SchemaTooltip>;
+    })}
+    {data.detail!=="names"&&t.indexes.length>0&&<div className="index-row"><KeyRound size={11}/>{t.indexes.length} {t.indexes.length===1?"index":"indexes"}</div>}
+  </div>;
 }
 function GroupNode({ data }: NodeProps) {
   return (
@@ -222,23 +197,11 @@ function GroupNode({ data }: NodeProps) {
     </div>
   );
 }
-function NoteNode({ data, selected }: NodeProps) {
-  const note = data.note as Note;
-  return (
-    <div className={"sticky-node " + (selected ? "selected" : "")}>
-      <b>
-        <StickyNote size={13} />
-        {note.name}
-      </b>
-      <p>{note.content}</p>
-      <small>Double-click to edit</small>
-    </div>
-  );
-}
-const nodeTypes = { table: TableNode, group: GroupNode, note: NoteNode };
+const nodeTypes = { table: TableNode, group: GroupNode };
 function RelationshipEdge(props: EdgeProps) {
   const [path, labelX, labelY] = getSmoothStepPath(props);
   const parts = String(props.data?.relation || "").split(":");
+  const highlighted = props.selected || !!props.data?.highlighted;
   return (
     <>
       <BaseEdge
@@ -247,7 +210,7 @@ function RelationshipEdge(props: EdgeProps) {
         style={props.style}
         interactionWidth={24}
       />
-      {props.selected && (
+      {highlighted && (
         <circle
           className="edge-motion-dot"
           r={3}
@@ -262,7 +225,7 @@ function RelationshipEdge(props: EdgeProps) {
           className="edge-cardinality"
           style={{
             transform: `translate(-100%,-50%) translate(${props.sourceX - 9}px,${props.sourceY}px)`,
-            color: props.selected ? "#3273dc" : undefined,
+            color: highlighted ? "#3273dc" : undefined,
           }}
         >
           {parts[0]}
@@ -271,12 +234,12 @@ function RelationshipEdge(props: EdgeProps) {
           className="edge-cardinality"
           style={{
             transform: `translate(0,-50%) translate(${props.targetX + 9}px,${props.targetY}px)`,
-            color: props.selected ? "#3273dc" : undefined,
+            color: highlighted ? "#3273dc" : undefined,
           }}
         >
           {parts[1]}
         </span>
-        {props.selected && (
+        {(!!props.data?.explicitSelected || !!props.data?.showLabel) && (
           <span
             className="edge-name nodrag nopan"
             style={{
@@ -304,15 +267,6 @@ const exampleNodes: Node[] = [
       33 + table.fields.length * 30 + (table.indexes.length ? 25 : 0),
     position: initialExampleLayout[table.id],
     data: { table },
-    zIndex: 1,
-  })),
-  ...exampleModel.notes.map((note) => ({
-    id: note.id,
-    type: "note",
-    initialWidth: 240,
-    initialHeight: 210,
-    position: initialExampleLayout[note.id],
-    data: { note },
     zIndex: 1,
   })),
 ];
@@ -343,9 +297,20 @@ function Workspace() {
     [detail, setDetail] = useState<Detail>("all"),
     [canvasSearch, setCanvasSearch] = useState(""),
     [noteText, setNoteText] = useState(""),
-    [editingNote, setEditingNote] = useState("");
+    [noteField, setNoteField] = useState("");
   const [cloudAvailable, setCloudAvailable] = useState(false);
-  const [workspaceKey, setWorkspaceKey] = useState(accessKey);
+  const selectionReady = useRef(false);
+  const [previousSelection] = useState<{ id?: string; bundle?: string }>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("dbdiagram.selection.v1") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const [bundles, setBundles] = useState<Bundle[]>([defaultBundle]);
+  const [activeBundle, setActiveBundle] = useState(defaultBundle.id);
+  const [bundleColor, setBundleColor] = useState(bundleColors[0]);
+  const [moveBundle, setMoveBundle] = useState(defaultBundle.id);
   useEffect(() => {
     void fetch("/api/status")
       .then((r) => (r.ok ? r.json() : null))
@@ -354,18 +319,13 @@ function Workspace() {
       )
       .catch(() => {});
   }, []);
-  const connectWorkspace = async () => {
-    try {
-      const response = await fetch("/api/schemas", {
-        headers: { Authorization: "Bearer " + workspaceKey },
-      });
-      if (!response.ok) throw new Error("This workspace key was not accepted.");
-      localStorage.setItem("dbdiagram.access-key", workspaceKey);
-      location.reload();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
+  useEffect(() => {
+    const bundle =
+      bundles.find((b) => b.id === activeBundle)?.name || "Shared diagrams";
+    document.title = doc?.name
+      ? doc.name + " · " + bundle + " — dbdiagram"
+      : bundle + " — dbdiagram";
+  }, [doc?.name, activeBundle, bundles]);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
   const viewport = useViewport();
@@ -382,11 +342,7 @@ function Workspace() {
   useEffect(() => {
     if (!modal) return;
     const dialog = document.querySelector<HTMLElement>("[role=dialog]");
-    dialog
-      ?.querySelector<HTMLElement>(
-        "input:not([disabled]),textarea,select,button",
-      )
-      ?.focus();
+    const focusFrame=requestAnimationFrame(()=>{(dialog?.querySelector<HTMLElement>("input:not([disabled]),textarea,select") || dialog?.querySelector<HTMLElement>("button"))?.focus();});
     const handle = (e: KeyboardEvent) => {
       if (e.key === "Escape") setModal("");
       if (e.key === "Tab" && dialog) {
@@ -407,7 +363,7 @@ function Workspace() {
       }
     };
     window.addEventListener("keydown", handle);
-    return () => window.removeEventListener("keydown", handle);
+    return () => {cancelAnimationFrame(focusFrame);window.removeEventListener("keydown", handle);};
   }, [modal]);
   const fitDiagram = (options: FitViewOptions = {}) => {
     const canvas = canvasRef.current;
@@ -440,7 +396,14 @@ function Workspace() {
   useEffect(() => {
     if (nodesInitialized) fitInitialDiagram();
   }, [nodesInitialized, doc?.id, doc?.revision]);
-  const refresh = () => api("/schemas").then(setDocs);
+  const refresh = async () => {
+    const [documents, groups] = await Promise.all([
+      api("/schemas"),
+      api("/bundles"),
+    ]);
+    setDocs(documents);
+    setBundles(groups);
+  };
   const load = async (id: string) => {
     if (dirty.current) {
       setError("Save or revert your edits before switching schemas.");
@@ -460,7 +423,9 @@ function Workspace() {
         setModel({ notes: [], tables: [], refs: [], groups: [] });
         setNodes([]);
       }
+      selectionReady.current = true;
       setDoc(d);
+      setActiveBundle(d.bundle_id || defaultBundle.id);
       setCode(d.dbml);
       setStatus(
         d.storage === "cloud"
@@ -476,22 +441,126 @@ function Workspace() {
       setError((e as Error).message);
     }
   };
+  const chooseBundle = (id: string) => {
+    if (dirty.current) {
+      setError("Save or revert your edits before switching bundles.");
+      return;
+    }
+    setActiveBundle(id);
+    const first = docs.find((d) => (d.bundle_id || defaultBundle.id) === id);
+    if (first) {
+      void load(first.id);
+      return;
+    }
+    setDoc(null);
+    setCode("");
+    setModel({ tables: [], refs: [], groups: [], notes: [] });
+    setNodes([]);
+    setSelected("");
+    setSelectedEdge("");
+    setError("");
+    saved.current = "";
+    latestCode.current = "";
+    setStatus("Empty bundle");
+  };
+  const createBundle = async () => {
+    if (dirty.current) {
+      setError("Save or revert your edits before switching bundles.");
+      return;
+    }
+    try {
+      const bundle = await api("/bundles", { name, color: bundleColor });
+      await refresh();
+      setActiveBundle(bundle.id);
+      setDoc(null);
+      setCode("");
+      setModel({ tables: [], refs: [], groups: [], notes: [] });
+      setNodes([]);
+      setSelected("");
+      setSelectedEdge("");
+      saved.current = "";
+      latestCode.current = "";
+      setModal("");
+      setError("");
+      setStatus("Bundle created");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const moveDiagram = async () => {
+    if (!doc) return;
+    if (dirty.current) {
+      setError("Save or revert your edits before moving this diagram.");
+      return;
+    }
+    try {
+      const d = await api(
+        "/schemas/" + doc.id + "/bundle",
+        { bundle_id: moveBundle },
+        "PUT",
+      );
+      setDoc(d);
+      setActiveBundle(moveBundle);
+      await refresh();
+      setModal("");
+      setStatus("Diagram moved");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   useEffect(() => {
-    api("/schemas")
-      .then(async (ds) => {
-        setDocs(ds);
-        if (ds.length) await load(ds[0].id);
-        else {
-          const d = await api("/schemas", {
-            name: "welcome",
-            dbml: exampleDocument.dbml,
-          });
-          await refresh();
-          await load(d.id);
-        }
-      })
-      .catch((e) => setError(e.message));
+    void (async () => {
+      const documents = await api("/schemas");
+      const groups = await api("/bundles");
+      setDocs(documents);
+      setBundles(groups);
+      const previous = previousSelection;
+      const existing = documents.find((d: Doc) => d.id === previous.id);
+      if (existing) {
+        await load(existing.id);
+        return;
+      }
+      const first = documents.find(
+        (d: Doc) => (d.bundle_id || defaultBundle.id) === previous.bundle,
+      );
+      if (first) {
+        await load(first.id);
+        return;
+      }
+      if (
+        previous.bundle &&
+        groups.some((b: Bundle) => b.id === previous.bundle)
+      ) {
+        selectionReady.current = true;
+        setActiveBundle(previous.bundle);
+        setDoc(null);
+        setCode("");
+        setModel({ tables: [], refs: [], groups: [], notes: [] });
+        setNodes([]);
+        return;
+      }
+      if (documents.length) {
+        await load(documents[0].id);
+        return;
+      }
+      const d = await api("/schemas", {
+        name: "Welcome",
+        dbml: exampleDocument.dbml,
+        bundle_id: defaultBundle.id,
+      });
+      await refresh();
+      await load(d.id);
+    })().catch((e) => setError(e.message));
   }, []);
+  useEffect(() => {
+    if (!selectionReady.current) return;
+    try {
+      localStorage.setItem(
+        "dbdiagram.selection.v1",
+        JSON.stringify({ id: doc?.id, bundle: activeBundle }),
+      );
+    } catch {}
+  }, [doc?.id, activeBundle]);
   useEffect(() => {
     if (!doc) return;
     const seq = ++parseSeq.current;
@@ -541,18 +610,7 @@ function Workspace() {
                   selected: t.id === selected,
                   zIndex: 1,
                 };
-              })
-              .concat(
-                m.notes.map((note, i) => ({
-                  id: note.id,
-                  type: "note",
-                  position: old.find((n) => n.id === note.id)?.position ||
-                    doc.layout[note.id] || { x: 1050, y: 100 + i * 220 },
-                  data: { note },
-                  selected: false,
-                  zIndex: 1,
-                })),
-              );
+              });
           });
         })
         .catch((e) => {
@@ -619,6 +677,15 @@ function Workspace() {
     const t = setInterval(async () => {
       try {
         const d = await api("/schemas/" + doc.id);
+        if (d.bundle_id !== doc.bundle_id || d.name !== doc.name) {
+          setDoc((previous) =>
+            previous
+              ? { ...previous, name: d.name, bundle_id: d.bundle_id }
+              : previous,
+          );
+          setActiveBundle(d.bundle_id || defaultBundle.id);
+          void refresh();
+        }
         if (d.revision !== doc.revision) {
           if (dirty.current) {
             setError(
@@ -655,12 +722,12 @@ function Workspace() {
     if (!doc) return;
     clearTimeout(layoutTimer.current);
     layoutTimer.current = setTimeout(() => {
-      const layout = Object.fromEntries(
+      const layout = {...doc.layout,...Object.fromEntries(
         flow
           .getNodes()
-          .filter((n) => n.type === "table" || n.type === "note")
+          .filter((n) => n.type === "table")
           .map((n) => [n.id, n.position]),
-      );
+      )};
       api("/schemas/" + doc.id + "/layout", { layout }, "PUT").catch((e) =>
         setError(e.message),
       );
@@ -676,6 +743,7 @@ function Workspace() {
     try {
       const d = await api("/schemas", {
         name: filename || name || "Untitled Diagram",
+        bundle_id: activeBundle,
         dbml:
           dbml ||
           "// Define your database with DBML\n\nTable users {\n  id integer [pk, increment]\n  email varchar [unique, not null]\n}\n",
@@ -701,8 +769,10 @@ function Workspace() {
     }
   };
   const apply = async (next: string) => {
+    const previous=latestCode.current;
     try {
       await api("/parse", { dbml: next });
+      if(latestCode.current!==previous)throw new Error("Schema changed while preparing this edit. Try again.");
       change(next);
       setModal("");
     } catch (e) {
@@ -752,22 +822,15 @@ function Workspace() {
       setError((e as Error).message);
     }
   };
-  const addNote = () => {
-    const safe = name.replace(/[^\w]/g, "_");
-    if (!safe || !noteText.trim()) {
-      setError("Enter a note name and text.");
-      return;
-    }
-    const declaration = `Note ${safe} {\n  ${JSON.stringify(noteText)}\n}`;
-    try {
-      void apply(
-        editingNote
-          ? replaceNote(code, editingNote, declaration)
-          : code + "\n\n" + declaration + "\n",
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    }
+  const addNote = async () => {
+    const table=model.tables.find(t=>t.id===tableId);
+    if(!table || !noteText.trim()){setError("Choose a table and enter note text.");return;}
+    const previous=latestCode.current;
+    try{
+      const next=await setAttachedNote(previous,table.schema,table.name,noteField,noteText);
+      if(latestCode.current!==previous)throw new Error("Schema changed while preparing the note. Try again.");
+      await apply(next);
+    }catch(e){setError((e as Error).message);}
   };
   const arrange = (mode: Arrangement = arrangement) => {
     const positions = arrangeTables(
@@ -796,11 +859,16 @@ function Workspace() {
     }, 100);
   };
   const openNote = () => {
-    setName("");
-    setNoteText("");
-    setEditingNote("");
-    setModal("note");
+    const table=model.tables.find(t=>t.id===selected)||model.tables[0];
+    if(!table){setError("Create a table before attaching a note.");return;}
+    setTableId(table.id);setNoteField("");setNoteText(table.note || "");setError("");setModal("note");
   };
+  const highlightedRefs = highlightedRelationships(
+    model.refs,
+    highlight,
+    selected,
+    selectedEdge,
+  );
   const displayedNodes = nodes.map((n) => {
     if (n.type !== "table") return n;
     const t = n.data.table as Table;
@@ -826,15 +894,13 @@ function Workspace() {
         ...n.data,
         detail,
         keys,
+        foreignKeys:foreignKeyTargets(model.refs,t.id),
         highlightFields: model.refs
-          .filter((r) => r.id === selectedEdge)
-          .flatMap((r) =>
-            r.fromTable === t.id
-              ? r.fromFields
-              : r.toTable === t.id
-                ? r.toFields
-                : [],
-          ),
+          .filter((r) => highlightedRefs.has(r.id))
+          .flatMap((r) => [
+            ...(r.fromTable === t.id ? r.fromFields : []),
+            ...(r.toTable === t.id ? r.toFields : []),
+          ]),
       },
     };
   });
@@ -879,10 +945,7 @@ function Workspace() {
   const selectedRef = model.refs.find((r) => r.id === selectedEdge);
   const edges = model.refs.map((r) => {
     const active = r.id === selectedEdge;
-    const related =
-      highlight &&
-      selected &&
-      (r.fromTable === selected || r.toTable === selected);
+    const related = highlightedRefs.has(r.id);
     return {
       id: r.id,
       source: r.fromTable,
@@ -892,11 +955,14 @@ function Workspace() {
       targetHandle: detail === "names" ? "header-in" : r.toFields[0] + "-in",
       type: "relationship",
       ariaLabel: `Relationship ${r.name || r.fromTable + " to " + r.toTable}`,
-      selected: active,
-      animated: active,
+      selected: active || (!!selected && (r.fromTable===selected || r.toTable===selected)),
+      animated: active || related,
       interactionWidth: 24,
       data: {
         relation: r.relation,
+        highlighted: related,
+        explicitSelected:active,
+        showLabel: related && !!r.name,
         label:
           r.name ||
           `${r.fromTable}.${r.fromFields.join(", ")} → ${r.toTable}.${r.toFields.join(", ")}`,
@@ -904,7 +970,7 @@ function Workspace() {
       style: {
         stroke: active || related ? "#3273dc" : "#93a2b3",
         strokeWidth: active || related ? 2.5 : 1.3,
-        opacity: !active && highlight && selected && !related ? 0.15 : 1,
+        opacity: 1,
       },
     };
   });
@@ -976,22 +1042,38 @@ function Workspace() {
       <header>
         <div className="brand">
           <span className="logo">
-            <Database size={18} />
+            <img src="/favicon.svg" alt="" width="28" height="28" />
           </span>
           dbdiagram{" "}
         </div>
         <span className="slash">/</span>
-        <select
-          aria-label="Current schema"
-          value={doc?.id || ""}
-          onChange={(e) => void load(e.target.value)}
-        >
-          {docs.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        <DiagramPicker
+          bundles={bundles}
+          diagrams={docs}
+          bundleId={activeBundle}
+          diagramId={doc?.id}
+          onBundle={chooseBundle}
+          onDiagram={load}
+          onOpen={() => {
+            void refresh().catch((e) => setError(e.message));
+          }}
+          onNewBundle={() => {
+            setName("");
+            setBundleColor(bundleColors[bundles.length % bundleColors.length]);
+            setError("");
+            setModal("bundle");
+          }}
+          onNewDiagram={() => {
+            setName("");
+            setError("");
+            setModal("new");
+          }}
+          onMove={() => {
+            setMoveBundle(activeBundle);
+            setError("");
+            setModal("move");
+          }}
+        />
         <button
           className="new"
           onClick={() => {
@@ -1013,10 +1095,18 @@ function Workspace() {
         <button className="header-button" onClick={() => file.current?.click()}>
           <Upload size={15} /> Import
         </button>
-        <button className="header-button" onClick={() => setModal("export")}>
+        <button
+          className="header-button"
+          disabled={!doc}
+          onClick={() => setModal("export")}
+        >
           <Download size={15} /> Export
         </button>
-        <button className="save-button" onClick={() => void save()}>
+        <button
+          className="save-button"
+          disabled={!doc}
+          onClick={() => void save()}
+        >
           <Save size={14} /> Save
         </button>
         <input
@@ -1032,7 +1122,7 @@ function Workspace() {
         />
       </header>
       <main>
-        {editorVisible && (
+        {editorVisible && doc && (
           <aside className="editor">
             <div className="tabs">
               {["DBML", "Tables", "Groups", "Indexes"].map((t) => (
@@ -1191,6 +1281,30 @@ function Workspace() {
           ref={canvasRef}
           className={"canvas " + (panMode ? "pan-mode" : "")}
         >
+          {!doc && (
+            <div className="empty-bundle">
+              <span
+                className="bundle-avatar"
+                style={{
+                  background: bundles.find((b) => b.id === activeBundle)?.color,
+                }}
+              >
+                {bundles.find((b) => b.id === activeBundle)?.name.slice(0, 1)}
+              </span>
+              <h2>{bundles.find((b) => b.id === activeBundle)?.name}</h2>
+              <p>No diagrams yet. Start your first schema in this bundle.</p>
+              <button
+                className="primary"
+                onClick={() => {
+                  setName("");
+                  setModal("new");
+                }}
+              >
+                <Plus size={16} />
+                Create diagram
+              </button>
+            </div>
+          )}
           <div className="canvas-top">
             {!editorVisible && (
               <button
@@ -1243,15 +1357,6 @@ function Workspace() {
             onEdgeClick={(_, edge) => {
               setSelected("");
               setSelectedEdge(edge.id);
-            }}
-            onNodeDoubleClick={(_, n) => {
-              if (n.type === "note") {
-                const note = n.data.note as Note;
-                setName(note.name);
-                setEditingNote(note.name);
-                setNoteText(note.content);
-                setModal("note");
-              }
             }}
             onConnect={(connection) => {
               const from = model.tables.find((t) => t.id === connection.source),
@@ -1381,8 +1486,8 @@ function Workspace() {
             </button>
             <span className="tool-divider" />
             <button
-              title="Add sticky note (5)"
-              aria-label="Add sticky note"
+              title="Attach a note to a table or attribute (5)"
+              aria-label="Attach note"
               onClick={openNote}
             >
               <StickyNote size={18} />
@@ -1486,9 +1591,9 @@ function Workspace() {
         <span>
           <Database size={12} /> PostgreSQL{" "}
           <span className="footer-divider">|</span>{" "}
-          {doc?.storage === "cloud"
-            ? "Shared workspace"
-            : doc?.storage === "browser"
+          {doc?.storage === "cloud" || cloudAvailable
+            ? "Public workspace"
+            : doc?.storage === "browser" || browserMode
               ? "Browser workspace"
               : "Local workspace"}
         </span>
@@ -1513,18 +1618,20 @@ function Workspace() {
                   : modal === "search"
                     ? "Search diagram"
                     : modal === "note"
-                      ? editingNote
-                        ? "Edit sticky note"
-                        : "Add sticky note"
-                      : modal === "agent"
-                        ? "Your schema. Your agent."
-                        : modal === "new"
-                          ? "New diagram"
-                          : modal === "group"
-                            ? "Create table group"
-                            : modal === "index"
-                              ? "Create index"
-                              : "Export schema"}
+                      ? "Attach a note"
+                      : modal === "bundle"
+                        ? "Create a bundle"
+                        : modal === "move"
+                          ? "Move diagram"
+                          : modal === "agent"
+                            ? "Your schema. Your agent."
+                            : modal === "new"
+                              ? "New diagram"
+                              : modal === "group"
+                                ? "Create table group"
+                                : modal === "index"
+                                  ? "Create index"
+                                  : "Export schema"}
               </h2>
               <button aria-label="Close dialog" onClick={() => setModal("")}>
                 <X size={18} />
@@ -1610,11 +1717,7 @@ function Workspace() {
                         id: r.id,
                         kind: "Relationship",
                       })),
-                      model.notes.map((n) => ({
-                        label: n.name + " — " + n.content,
-                        id: n.id,
-                        kind: "Note",
-                      })),
+
                       model.groups.map((g) => ({
                         label: g.name,
                         id: g.tables[0] || "",
@@ -1655,104 +1758,112 @@ function Workspace() {
                     ))}
                 </div>
               </>
-            ) : modal === "note" ? (
+            ) : modal === "bundle" ? (
               <>
                 <label>
-                  Note name
+                  Bundle name
                   <input
                     autoFocus
-                    disabled={!!editingNote}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="architecture_note"
+                    maxLength={64}
+                    placeholder="Personal, Alex’s projects, Work…"
                   />
                 </label>
+                <label>Bundle color</label>
+                <div className="bundle-color-options">
+                  {bundleColors.map((color) => (
+                    <button
+                      key={color}
+                      aria-label={"Choose " + color + " bundle color"}
+                      aria-pressed={color === bundleColor}
+                      style={{ background: color }}
+                      onClick={() => setBundleColor(color)}
+                    >
+                      {color === bundleColor && <Check size={18} />}
+                    </button>
+                  ))}
+                </div>
+                <p>
+                  Bundles keep diagrams organized. Everyone can view and edit
+                  them.
+                </p>
+                {error && <p className="error">{error}</p>}
+                <button className="primary" onClick={() => void createBundle()}>
+                  Create bundle
+                </button>
+              </>
+            ) : modal === "move" ? (
+              <>
+                <p>
+                  Move <b>{doc?.name}</b> into another bundle. Its schema and
+                  layout stay intact.
+                </p>
                 <label>
-                  Note text
-                  <textarea
-                    rows={6}
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    placeholder="Document a decision or add a reminder…"
-                  />
+                  Destination bundle
+                  <select aria-label="Destination bundle"
+                    value={moveBundle}
+                    onChange={(e) => setMoveBundle(e.target.value)}
+                  >
+                    {bundles.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 {error && <p className="error">{error}</p>}
-                <button className="primary" onClick={addNote}>
-                  {editingNote ? "Update note" : "Add note"}
+                <button className="primary" onClick={() => void moveDiagram()}>
+                  Move diagram
                 </button>
+              </>
+            ) : modal === "note" ? (
+              <>
+                <label>Table<select aria-label="Note table" value={tableId} onChange={e=>{setTableId(e.target.value);setNoteField("");setNoteText(model.tables.find(t=>t.id===e.target.value)?.note || "");}}>{model.tables.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+                <label>Attach to<select aria-label="Note target" value={noteField} onChange={e=>{setNoteField(e.target.value);const table=model.tables.find(t=>t.id===tableId);setNoteText(e.target.value?table?.fields.find(f=>f.name===e.target.value)?.note || "":table?.note || "");}}><option value="">Table</option>{model.tables.find(t=>t.id===tableId)?.fields.map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select></label>
+                <label>Note text<textarea autoFocus rows={5} value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Explain this table or attribute…"/></label>
+                {error&&<p className="error">{error}</p>}
+                <button className="primary" onClick={()=>void addNote()}>Apply note</button>
               </>
             ) : modal === "agent" && cloudAvailable ? (
               <>
                 <p>
-                  Connect to your team's shared Neon workspace. Browser-only
-                  diagrams stay on this device.
+                  Diagrams are public and organized into bundles. Your agent can
+                  list, create, read, edit, move, and export them.
                 </p>
-                <label>
-                  Workspace access key
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    value={workspaceKey}
-                    onChange={(e) => setWorkspaceKey(e.target.value)}
-                    placeholder="Enter your team's access key"
-                  />
-                </label>
-                {error && <p className="error">{error}</p>}
+                <code className="path">{location.origin + "/api/mcp"}</code>
+                <p>
+                  Current bundle:{" "}
+                  <b>{bundles.find((b) => b.id === activeBundle)?.name}</b>
+                </p>
+                <code className="path">{activeBundle}</code>
+                <p>
+                  Use list_bundles to find bundle IDs. Pass bundle_id when
+                  creating a diagram, or use move_schema to organize an existing
+                  diagram.
+                </p>
                 <button
                   className="primary"
-                  onClick={() => void connectWorkspace()}
-                >
-                  Connect shared workspace
-                </button>
-                {doc?.storage === "cloud" && (
-                  <>
-                    <h3>Remote MCP</h3>
-                    <code className="path">{location.origin + "/api/mcp"}</code>
-                    <p>
-                      Use this MCP configuration in Claude Code or an MCP
-                      client. It includes your workspace key, which allows
-                      reading and editing every shared diagram.
-                    </p>
-                    <button
-                      className="primary"
-                      onClick={() =>
-                        download(
-                          "dbdiagram.mcp.json",
-                          JSON.stringify(
-                            {
-                              mcpServers: {
-                                dbdiagram: {
-                                  type: "http",
-                                  url: location.origin + "/api/mcp",
-                                  headers: {
-                                    Authorization: "Bearer " + accessKey,
-                                  },
-                                },
-                              },
+                  onClick={() =>
+                    download(
+                      "dbdiagram.mcp.json",
+                      JSON.stringify(
+                        {
+                          mcpServers: {
+                            dbdiagram: {
+                              type: "http",
+                              url: location.origin + "/api/mcp",
                             },
-                            null,
-                            2,
-                          ),
-                        )
-                      }
-                    >
-                      Download MCP config
-                    </button>
-                    <p>
-                      Codex: add a Streamable HTTP MCP server with this URL and
-                      an Authorization header containing Bearer followed by the
-                      access key.
-                    </p>
-                    <button
-                      onClick={() => {
-                        localStorage.removeItem("dbdiagram.access-key");
-                        location.reload();
-                      }}
-                    >
-                      Switch to browser-only diagrams
-                    </button>
-                  </>
-                )}
+                          },
+                        },
+                        null,
+                        2,
+                      ),
+                    )
+                  }
+                >
+                  Download MCP config
+                </button>
               </>
             ) : modal === "agent" && doc?.storage === "browser" ? (
               <>

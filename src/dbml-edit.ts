@@ -109,3 +109,37 @@ export function findTableRange(source: string, schema: string, name: string) {
   }
   return null;
 }
+
+export async function setAttachedNote(source:string,schema:string,tableName:string,fieldName:string,content:string){
+ const {database}=await import('./schema');
+ const db=database(source);
+ const table=db.schemas.find(s=>s.name===schema)?.tables.find(t=>t.name===tableName);
+ if(!table)throw new Error('Table not found.');
+ const target:any=fieldName?table.fields.find(f=>f.name===fieldName):table;
+ if(!target)throw new Error('Attribute not found.');
+ // shortcut: inherited TablePartial fields must have their notes edited in the partial.
+ if(fieldName && target.injectedPartial)throw new Error('This attribute comes from a TablePartial. Edit its note in the DBML partial.');
+ const note='note: '+JSON.stringify(content);
+ let next:string;
+ if(target.noteToken){
+  const {start,end}=target.noteToken;
+  next=source.slice(0,start.offset)+note+source.slice(end.offset);
+ }else if(!fieldName){
+  const position=table.token.end.offset-1;
+  next=source.slice(0,position)+'\n  '+note+'\n'+source.slice(position);
+ }else{
+  const position=target.token.end.offset;
+  const declaration=source.slice(target.token.start.offset,position);
+  const tokens=[...declaration.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'''[\s\S]*?'''|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[\[\]]/g)].filter(t=>!t[0].startsWith('//')&&!t[0].startsWith('/*'));
+  const brackets=tokens.filter(t=>t[0]==='['||t[0]===']');
+  const opening=brackets.at(-2),closing=brackets.at(-1);
+  const arrayOnly=opening&&closing&&target.type.type_name.endsWith('[]')&&!declaration.slice(opening.index!+1,closing.index).trim();
+  if(opening?.[0]==='['&&closing?.[0]===']'&&!arrayOnly){
+   const offset=target.token.start.offset+closing.index!;
+   const existing=declaration.slice(opening.index!+1,closing.index).trim();
+   next=source.slice(0,offset)+(existing?', ':'')+note+source.slice(offset);
+  }else next=source.slice(0,position)+' ['+note+']'+source.slice(position);
+ }
+ database(next);
+ return next;
+}

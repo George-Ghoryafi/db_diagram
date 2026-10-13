@@ -12,6 +12,12 @@ import {
 import { resolve, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseSchema, SchemaError } from "./schema.js";
+import {
+  defaultBundle,
+  bundleDetails,
+  type Bundle,
+  type DiagramMetadata,
+} from "../src/bundles.js";
 import { example, exampleLayout } from "./example.js";
 
 export type Layout = Record<string, { x: number; y: number }>;
@@ -68,7 +74,12 @@ export class SchemaStore {
       .filter((name) => /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\.dbml$/.test(name))
       .map((name) => {
         const schema = this.read(name.slice(0, -5));
-        return { id: schema.id, name: schema.name, revision: schema.revision };
+        return {
+          id: schema.id,
+          name: schema.name,
+          revision: schema.revision,
+          bundle_id: schema.bundle_id,
+        };
       });
   }
   read(id: string) {
@@ -87,11 +98,46 @@ export class SchemaStore {
         );
       }
     }
-    return { id, name: id, dbml, revision: revision(dbml), layout };
+    const metadataPath = this.path(id, ".meta.json");
+    const metadata = existsSync(metadataPath)
+      ? JSON.parse(readFileSync(metadataPath, "utf8"))
+      : {};
+    return {
+      id,
+      name: metadata.name || id,
+      bundle_id: metadata.bundle_id || defaultBundle.id,
+      dbml,
+      revision: revision(dbml),
+      layout,
+    };
   }
-  async write(id: string, dbml: string, expectedRevision?: string) {
+  async write(
+    id: string,
+    dbml: string,
+    expectedRevision?: string,
+    metadata: DiagramMetadata = {},
+  ) {
     this.path(id);
     parseSchema(dbml);
+    if (
+      metadata.name !== undefined &&
+      (typeof metadata.name !== "string" ||
+        !metadata.name.trim() ||
+        metadata.name.trim().length > 120)
+    )
+      throw new SchemaError("Diagram names must contain 1–120 characters.");
+    if (
+      expectedRevision &&
+      (metadata.name !== undefined || metadata.bundle_id !== undefined)
+    )
+      throw new SchemaError("Use move_schema to change a bundle.");
+    if (
+      !expectedRevision &&
+      !this.listBundles().some(
+        (b) => b.id === (metadata.bundle_id || defaultBundle.id),
+      )
+    )
+      throw new SchemaError("Bundle not found.", 404);
     return this.lock(id, () => {
       const path = this.path(id);
       if (existsSync(path)) {
@@ -109,6 +155,14 @@ export class SchemaStore {
       } else if (expectedRevision)
         throw new SchemaError("Schema not found.", 404);
       this.atomic(path, dbml);
+      if (!expectedRevision)
+        this.atomic(
+          this.path(id, ".meta.json"),
+          JSON.stringify({
+            name: metadata.name || id,
+            bundle_id: metadata.bundle_id || defaultBundle.id,
+          }),
+        );
       return this.read(id);
     });
   }
@@ -131,6 +185,37 @@ export class SchemaStore {
       this.atomic(
         this.path(id, ".layout.json"),
         JSON.stringify(layout, null, 2),
+      );
+      return this.read(id);
+    });
+  }
+  listBundles(): Bundle[] {
+    const path = this.path("workspace-bundles", ".json");
+    return existsSync(path)
+      ? JSON.parse(readFileSync(path, "utf8"))
+      : [defaultBundle];
+  }
+  async createBundle(name: string, color: string) {
+    const details = bundleDetails(name, color);
+    return this.lock("workspace-bundles", () => {
+      const bundles = this.listBundles();
+      const bundle = { id: randomUUID(), ...details };
+      bundles.push(bundle);
+      this.atomic(
+        this.path("workspace-bundles", ".json"),
+        JSON.stringify(bundles),
+      );
+      return bundle;
+    });
+  }
+  async moveSchema(id: string, bundleId: string) {
+    if (!this.listBundles().some((b) => b.id === bundleId))
+      throw new SchemaError("Bundle not found.", 404);
+    return this.lock(id, () => {
+      const document = this.read(id);
+      this.atomic(
+        this.path(id, ".meta.json"),
+        JSON.stringify({ name: document.name, bundle_id: bundleId }),
       );
       return this.read(id);
     });

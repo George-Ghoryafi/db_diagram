@@ -8,33 +8,17 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SchemaStore } from "../server/storage";
 import { createHostedApp } from "../server/hosted";
 
-test("hosted API and remote MCP protect and share the same schema store", async () => {
+test("hosted API and remote MCP publicly share the same schema store", async () => {
   const directory = mkdtempSync(join(tmpdir(), "hosted-diagram-"));
   const store = new SchemaStore(directory);
-  const key = "test-workspace-key-which-is-long-enough";
-  const server = createHostedApp(() => store, key).listen(0, "127.0.0.1");
+  const server = createHostedApp(() => store).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address() as { port: number };
   const url = `http://127.0.0.1:${address.port}`;
   const client = new Client({ name: "hosted-test", version: "1" });
-  const headers = { Authorization: "Bearer " + key };
+  const headers = {};
   try {
-    assert.equal((await fetch(url + "/api/schemas")).status, 401);
-    assert.equal(
-      (await fetch(url + "/api/schemas", { headers: { Authorization: key } }))
-        .status,
-      401,
-    );
-    assert.equal(
-      (
-        await fetch(url + "/api/mcp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        })
-      ).status,
-      401,
-    );
+    assert.equal((await fetch(url + "/api/schemas")).status, 200);
     assert.equal(
       (
         await fetch(url + "/api/schemas", {
@@ -48,7 +32,7 @@ test("hosted API and remote MCP protect and share the same schema store", async 
         requestInit: { headers },
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 5);
+    assert.equal((await client.listTools()).tools.length, 8);
     const dbml = "Table remote_test { id integer [pk] }";
     assert.ok(
       !(

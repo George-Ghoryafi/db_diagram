@@ -38,3 +38,34 @@ test("table selection covers nested definitions and ignores comments and quoted 
   );
   assert.equal(findTableRange(source, "public", "missing"), null);
 });
+
+import {setAttachedNote} from '../src/dbml-edit';
+test('attached notes edit only the intended table or attribute using official source ranges',async()=>{
+ const source=`// Preserve this comment
+Table "team"."users" {
+  id int [pk]
+  "display name" varchar [not null, default: '[]']
+  tags varchar[]
+  body text [note: 'Old } note']
+  Note { 'Original table note' }
+}
+Table other { id int [pk, note: 'Untouched'] }
+`;
+ const fieldNote='A detailed "note"\nwith braces } and unicode café';
+ let edited=await setAttachedNote(source,'team','users','display name',fieldNote);
+ edited=await setAttachedNote(edited,'team','users','body','Updated body note');
+ edited=await setAttachedNote(edited,'team','users','tags','Tags note');
+ edited=await setAttachedNote(edited,'team','users','','Updated table note');
+ const db=Parser.parse(edited,'dbmlv2');
+ const users=db.schemas.find(s=>s.name==='team')!.tables[0];
+ assert.equal(users.fields.find(f=>f.name==='display name')!.note,fieldNote);
+ assert.equal(users.fields.find(f=>f.name==='display name')!.not_null,true);
+ assert.equal(users.fields.find(f=>f.name==='tags')!.type.type_name,'varchar[]');
+ assert.equal(users.fields.find(f=>f.name==='body')!.note,'Updated body note');
+ assert.equal(users.note,'Updated table note');
+ assert.ok(edited.startsWith('// Preserve this comment'));
+ assert.ok(edited.endsWith("Table other { id int [pk, note: 'Untouched'] }\n"));
+ const newTableNote=await setAttachedNote('Table sample { id int }','public','sample','','A table note');
+ assert.equal(Parser.parse(newTableNote,'dbmlv2').schemas[0].tables[0].note,'A table note');
+ await assert.rejects(setAttachedNote(source,'team','users','missing','Nope'),/Attribute not found/);
+});

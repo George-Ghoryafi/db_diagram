@@ -74,3 +74,37 @@ test("all layout modes handle cyclic/disconnected graphs and avoid table overlap
   }
   assert.deepEqual(arrangeTables([], [], [], "compact"), {});
 });
+
+import { highlightedRelationships } from "../src/canvas";
+test("highlight toggle illuminates all relationships without selection, then focuses a selected table", () => {
+  const refs = [
+    { id: "ab", fromTable: "a", toTable: "b" },
+    { id: "bc", fromTable: "b", toTable: "c" },
+    { id: "dd", fromTable: "d", toTable: "d" },
+  ];
+  assert.deepEqual(
+    [...highlightedRelationships(refs, true, "", "")],
+    ["ab", "bc", "dd"],
+  );
+  assert.deepEqual([...highlightedRelationships(refs, true, "a", "")], ["ab"]);
+  assert.deepEqual(
+    [...highlightedRelationships(refs, true, "b", "")],
+    ["ab", "bc"],
+  );
+  assert.deepEqual([...highlightedRelationships(refs, false, "b", "")], ["ab","bc"]);
+  assert.deepEqual([...highlightedRelationships(refs,false,"","")],[]);
+  assert.deepEqual(
+    [...highlightedRelationships(refs, false, "", "dd")],
+    ["dd"],
+  );
+});
+
+import {foreignKeyTargets} from '../src/canvas';
+test('foreign-key indicators respect relationship direction and composite columns',()=>{
+ const refs=[{fromTable:'users',fromFields:['id'],toTable:'posts',toFields:['user_id'],relation:'1:*'},{fromTable:'lines',fromFields:['order_id','version'],toTable:'orders',toFields:['id','version'],relation:'*:1'}];
+ assert.deepEqual(foreignKeyTargets(refs,'users'),{});
+ assert.deepEqual(foreignKeyTargets(refs,'posts'),{user_id:['users.id']});
+ assert.deepEqual(foreignKeyTargets(refs,'lines'),{order_id:['orders.id'],version:['orders.version']});
+ const self=[{fromTable:'users',fromFields:['parent_id'],toTable:'users',toFields:['id'],relation:'*:1'}];
+ assert.deepEqual(foreignKeyTargets(self,'users'),{parent_id:['users.id']});
+});

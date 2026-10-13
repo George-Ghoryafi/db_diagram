@@ -1,5 +1,6 @@
 import express, { type ErrorRequestHandler } from "express";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { MetadataError } from "../src/bundles.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createSchemaMcp, type McpSchemaStore } from "./mcp-server.js";
 import {
@@ -13,10 +14,7 @@ import type { Layout } from "./storage.js";
 type HostedStore = McpSchemaStore & {
   saveLayout(id: string, layout: Layout): Promise<unknown>;
 };
-export function createHostedApp(
-  store: () => HostedStore,
-  key = process.env.DIAGRAM_ACCESS_KEY,
-) {
+export function createHostedApp(store: () => HostedStore) {
   const app = express();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
@@ -26,35 +24,18 @@ export function createHostedApp(
   app.get("/api/status", (_req, res) =>
     res.json({
       storage: "cloud",
-      configured:
-        !!(process.env.DATABASE_URL || process.env.db_diagram_DATABASE_URL) &&
-        !!key &&
-        key.length >= 32,
-      version: "1.1.0",
+      configured: !!(
+        process.env.DATABASE_URL || process.env.db_diagram_DATABASE_URL
+      ),
+      version: "1.2.0",
     }),
   );
   app.use("/api", (req, res, next) => {
-    if (!key || key.length < 32) {
-      res
-        .status(503)
-        .json({ error: "Shared workspace access key is not configured." });
-      return;
-    }
     if (
       req.headers.origin &&
       req.headers.origin !== `https://${req.headers.host}`
     ) {
       res.status(403).json({ error: "Origin not allowed." });
-      return;
-    }
-    const supplied =
-      req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1] || "";
-    const digest = (value: string) =>
-      createHash("sha256").update(value).digest();
-    if (!timingSafeEqual(digest(supplied), digest(key))) {
-      res
-        .status(401)
-        .json({ error: "Connect your workspace using Agent access." });
       return;
     }
     next();
@@ -78,12 +59,39 @@ export function createHostedApp(
       await server.close();
     }
   });
+  app.get("/api/bundles", async (_req, res) =>
+    res.json(await store().listBundles()),
+  );
+  app.post("/api/bundles", async (req, res) =>
+    res
+      .status(201)
+      .json(await store().createBundle(req.body?.name, req.body?.color)),
+  );
+  app.put("/api/schemas/:id/bundle", async (req, res) =>
+    res.json(await store().moveSchema(req.params.id, req.body?.bundle_id)),
+  );
   app.get("/api/schemas", async (_req, res) => res.json(await store().list()));
   app.post("/api/schemas", async (req, res) => {
     if (typeof req.body?.name !== "string" || !req.body.name.trim())
       throw new SchemaError("Name is required.");
-    const id = req.body.name.trim().toLowerCase().replace(/\s+/g, "-");
-    res.status(201).json(await store().write(id, req.body.dbml));
+    if (req.body.name.trim().length > 120)
+      throw new SchemaError("Diagram names must contain 1–120 characters.");
+    const stem =
+      req.body.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40) || "diagram";
+    const id = stem + "-" + randomUUID().slice(0, 8);
+    res
+      .status(201)
+      .json(
+        await store().write(id, req.body.dbml, undefined, {
+          name: req.body.name.trim(),
+          bundle_id: req.body.bundle_id,
+        }),
+      );
   });
   app.get("/api/schemas/:id", async (req, res) =>
     res.json(await store().read(req.params.id)),
@@ -107,13 +115,15 @@ export function createHostedApp(
   );
   const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
     const status =
-      error instanceof SchemaError
-        ? error.status
-        : error.status === 413
-          ? 413
-          : error instanceof SyntaxError
-            ? 400
-            : 500;
+      error instanceof MetadataError
+        ? 400
+        : error instanceof SchemaError
+          ? error.status
+          : error.status === 413
+            ? 413
+            : error instanceof SyntaxError
+              ? 400
+              : 500;
     // Database errors can contain connection details, so keep them out of responses.
     res.status(status).json({
       error:
