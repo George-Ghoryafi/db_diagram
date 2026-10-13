@@ -32,7 +32,7 @@ test("hosted API and remote MCP publicly share the same schema store", async () 
         requestInit: { headers },
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 8);
+    assert.equal((await client.listTools()).tools.length, 9);
     const dbml = "Table remote_test { id integer [pk] }";
     assert.ok(
       !(
@@ -61,6 +61,16 @@ test("hosted API and remote MCP publicly share the same schema store", async () 
       arguments: { id: "remote-test", dbml, revision: "stale" },
     });
     assert.equal(conflict.isError, true);
+    const storage = { version: 1, units: [{ id: 'files', kind: 'blob', name: 'Original files', items: [{ id: 'originals', name: 'original-documents', access: 'private' }] }], links: [{ id: 'objects', from: { node: 'public.remote_test', port: 'id' }, to: { node: 'storage:files', port: 'originals' }, label: 'locates object' }] };
+    const stored = await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: document.revision, storage } });
+    assert.ok(!stored.isError, JSON.stringify(stored));
+    const mixedRead = await client.callTool({ name: 'read_schema', arguments: { id: 'remote-test' } });
+    const mixedDocument = JSON.parse((mixedRead.content as { text: string }[])[0].text);
+    assert.equal(mixedDocument.model.storage.units[0].kind, 'blob');
+    assert.equal(mixedDocument.model.storage.links[0].to.port, 'originals');
+    assert.ok(mixedDocument.dbml.startsWith(dbml));
+    assert.equal((await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: document.revision, storage } })).isError, true);
+    assert.equal((await client.callTool({ name: 'write_storage', arguments: { id: 'remote-test', revision: mixedDocument.revision, storage: { ...storage, links: [{ ...storage.links[0], from: { node: 'public.remote_test', port: 'missing' } }] } } })).isError, true);
     const invalid = await client.callTool({
       name: "write_schema",
       arguments: { id: "bad", dbml: "Table broken {" },

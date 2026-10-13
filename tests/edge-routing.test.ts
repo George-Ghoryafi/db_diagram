@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { crossesTable, routeRelationship, routeGeometry, type TableBounds, type Point } from '../src/edge-routing';
+import { crossesTable, routeRelationship, routeGeometry, storageLabelPosition, type TableBounds, type Point } from '../src/edge-routing';
 
 function verify(source: Point, target: Point, tables: TableBounds[]) {
   const route = routeRelationship(source, target, tables);
@@ -93,4 +93,11 @@ test('references attach to facing sides or the same side for vertically stacked 
   for(const request of requests){const route=routes[request.id];assert.ok(route);assert.deepEqual(route[0],request.source);assert.deepEqual(route.at(-1),request.target);for(let i=1;i<route.length;i++)assert.ok(!tables.some(t=>crossesTable(route[i-1],route[i],t)));}
   assert.ok(routes.back![1].x<requests[0].source.x);
   assert.ok(routes.stacked!.at(-2)!.x>requests[1].target.x);
+});
+
+
+test('storage labels use a clear segment instead of covering endpoint nodes', () => {
+  const point = storageLabelPosition([{x:100,y:30},{x:450,y:30},{x:450,y:200},{x:600,y:200}], [{x:0,y:0,width:100,height:100},{x:200,y:0,width:300,height:80},{x:500,y:150,width:100,height:100}], 100);
+  assert.equal(point.x,450);
+  assert.equal(point.y,115);
 });

@@ -102,3 +102,32 @@ The relationship highlight toggle shows all relationships and their endpoint fie
 
 
 Table cards use compact `NN` badges for explicit not-null settings, monospace data types, and primary/foreign-key icons. Hover or keyboard-focus an attribute to inspect its constraints, referenced columns, and note. Table notes have a note icon in the header. **Attach note** writes standard DBML notes on the selected table or attribute; it uses the official parser's source locations and preserves unrelated source. Inherited TablePartial notes are edited in DBML on the partial. Standalone `Note` declarations remain in source/export for compatibility, but their floating canvas cards are hidden.
+
+## Mixed SQL and NoSQL storage models
+
+The **Storage** tab models object/BLOB stores, document stores and key-value stores on the SQL canvas. Add a store, choose its technology, then define buckets, collections or keyspaces. Buckets have access levels, object types and key patterns. Collections and KV values accept a JSON field map (for example `{"document_id":"uuid","metadata":{"language":"string"}}`) or JSON Schema; nested objects and arrays appear as separate field rows. These are diagram definitions, not infrastructure provisioning or enforcement of access rules.
+
+Use **Storage → Connections → Connect** to link a SQL table or column to a bucket, collection field or keyspace. Connections can represent references, synchronization, caches or data flow, with one-way or bidirectional arrows. They use dashed teal lines rather than SQL foreign-key notation. Store nodes participate in drag, fit, search, minimap and every auto-layout. A connection whose table, column or storage item was removed remains visible as a broken connection in the Storage panel so it can be repaired or removed.
+
+Definitions are retained in a single top-level DBML comment:
+
+```dbml
+/* @schemadb-storage
+{
+  "version": 1,
+  "units": [{
+    "id": "files", "kind": "blob", "name": "Application files", "provider": "S3",
+    "items": [{"id":"originals","name":"original-documents","access":"private","keyPattern":"{org_id}/{document_id}.pdf","contentType":"application/pdf"}]
+  }],
+  "links": [{
+    "id":"document-object", "kind":"reference", "label":"locates original file", "direction":"forward",
+    "from":{"node":"public.documents","port":"object_key"},
+    "to":{"node":"storage:files","port":"originals"}
+  }]
+}
+*/
+```
+
+Store kinds are `blob`, `document` and `kv`. Item fields include `name`, `note`, `access`, `keyPattern`, `contentType`, `ttl` and `shape` (a JSON string). IDs are stable letters/numbers/hyphens/underscores. Storage node IDs are `storage:<unit-id>`; ports are item IDs or `<item-id>/<nested.field.path>` (arrays use `chunks[].text`). An empty port targets the whole node.
+
+**MCP:** `read_schema` returns `model.storage` alongside SQL tables. `write_storage({id, revision, storage})` replaces only this structured storage model and preserves all surrounding DBML; use the revision from the latest read. It validates IDs, JSON shapes and connection endpoints and rejects stale writes. The existing `write_schema` and `validate_schema` also support the comment representation. DBML import/export and version history retain it; SQL export intentionally contains SQL only. Standard dbdiagram/DBML readers ignore the extension and display only SQL tables.

@@ -1,4 +1,5 @@
 import { Parser, ModelExporter } from "@dbml/core";
+import { readStorageModel } from './storage-model';
 
 export class SchemaError extends Error {
   constructor(
@@ -72,11 +73,14 @@ interface RawSchema {
 }
 export function parseSchema(text: string) {
   const db = database(text);
+  let storage;
+  try { storage = readStorageModel(text); } catch (error) { throw new SchemaError(errorMessage(error)); }
   const raw = db.export() as unknown as {
     schemas: RawSchema[];
     notes: { name: string; content: string }[];
   };
   return {
+    storage,
     notes: raw.notes.map((note) => ({
       id: "note:" + note.name,
       name: note.name,

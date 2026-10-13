@@ -1,5 +1,12 @@
 export type Point = { x: number; y: number };
 export type TableBounds = Point & { width: number; height: number };
+export function storageLabelPosition(points: Point[], tables: TableBounds[], width: number) {
+  const candidates = points.slice(1).map((point, index) => ({
+    x: (point.x + points[index].x) / 2, y: (point.y + points[index].y) / 2,
+    length: Math.abs(point.x - points[index].x) + Math.abs(point.y - points[index].y),
+  })).sort((a, b) => b.length - a.length);
+  return candidates.find(point => !tables.some(table => point.x + width / 2 > table.x && point.x - width / 2 < table.x + table.width && point.y + 10 > table.y && point.y - 10 < table.y + table.height)) || routeGeometry(points).label;
+}
 type Segment = { a: Point; b: Point; terminal?: boolean; endpoints?: Point[] };
 export type RelationshipRoute = { id: string; source: Point; target: Point; sourceSide?: "left" | "right"; targetSide?: "left" | "right" };
 const laneGap = 12;

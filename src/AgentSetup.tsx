@@ -27,7 +27,7 @@ export function AgentSetup({ endpoint, bundleName, bundleId, download }: {
       : agent === "Cursor" ? { url: endpoint } : { type: "http", url: endpoint } } }, null, 2);
   const configPath = { Codex: "~/.codex/config.toml", "Claude Code": ".mcp.json in your project", Cursor: "~/.cursor/mcp.json", "Gemini CLI": "~/.gemini/settings.json" }[agent];
   const cursorLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=schemaDB&config=${encodeURIComponent(btoa(JSON.stringify({ url: endpoint })))}`;
-  const prompt = `Use the schemaDB MCP to create a new diagram in the bundle ${JSON.stringify(bundleName)} (bundle_id: ${bundleId}). Use a unique diagram ID, validate the DBML, save it, and read it back to confirm. Return the diagram ID. The schema should include: [describe your tables and relationships].`;
+  const prompt = `Use the schemaDB MCP to create a new diagram in the bundle ${JSON.stringify(bundleName)} (bundle_id: ${bundleId}). Use a unique diagram ID, validate the DBML, save it, and read it back to confirm. Return the diagram ID. The schema should include: [describe your tables and relationships]. For object/BLOB, document or key-value storage, read_schema then use write_storage with the latest revision to define stores, buckets/collections/keyspaces, document/value shapes, and connections to SQL columns.`;
   async function copy(value: string, label: string) {
     setError("");
     try { await navigator.clipboard.writeText(value); setCopied(label); }

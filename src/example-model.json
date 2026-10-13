@@ -1,4 +1,9 @@
 {
+  "storage": {
+    "version": 1,
+    "units": [],
+    "links": []
+  },
   "notes": [
     {
       "id": "note:Explore",

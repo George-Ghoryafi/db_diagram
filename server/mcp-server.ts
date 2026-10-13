@@ -6,6 +6,7 @@ import {
   type DiagramMetadata,
 } from "../src/bundles.js";
 import type { SchemaStore } from "./storage.js";
+import { storageModelSchema, writeStorageModel, storageLinkIssue, storageNodeId } from '../src/storage-model.js';
 import {
   SchemaError,
   errorMessage,
@@ -28,7 +29,7 @@ export type McpSchemaStore = {
   moveSchema(id: string, bundleId: string): ReturnType<SchemaStore["write"]>;
 };
 export function createSchemaMcp(store: McpSchemaStore) {
-  const server = new McpServer({ name: "schemaDB", version: "1.2.0" });
+  const server = new McpServer({ name: "schemaDB", version: "1.3.0" });
   function result(value: unknown) {
     return {
       content: [
@@ -71,7 +72,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
     "read_schema",
     {
       description:
-        "Read DBML, revision, saved layout, and normalized tables, relationships, indexes and groups.",
+        "Read DBML, revision, saved layout, and normalized tables, relationships, indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML.",
       inputSchema: { id: z.string() },
     },
     ({ id }) =>
@@ -84,7 +85,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
     "write_schema",
     {
       description:
-        "Create or update a schema. When updating, provide the revision returned by read_schema to prevent overwriting newer edits. DBML is validated before atomic save; previous versions are backed up. For creation, optionally provide bundle_id and name; otherwise use Shared diagrams. Use move_schema for existing diagrams.",
+        "Create or update a schema. When updating, provide the revision returned by read_schema to prevent overwriting newer edits. Preserve existing SQL and the @schemadb-storage comment unless explicitly changing them; use write_storage for structured non-SQL edits. DBML is validated before atomic save; previous versions are backed up. For creation, optionally provide bundle_id and name; otherwise use Shared diagrams. Use move_schema for existing diagrams.",
       inputSchema: {
         id: z.string(),
         dbml: z.string(),
@@ -95,6 +96,25 @@ export function createSchemaMcp(store: McpSchemaStore) {
     },
     ({ id, dbml, revision, bundle_id, name }) =>
       run(() => store.write(id, dbml, revision, { bundle_id, name })),
+  );
+  server.registerTool(
+    "write_storage",
+    {
+      description: "Replace the storage model of an existing diagram, preserving all SQL DBML. Read_schema first and supply its revision and model.storage. Storage model version is 1; units have stable IDs, kind blob/document/kv, name, provider, note, and items (buckets/collections/keyspaces). Items have id, name, access private/public, keyPattern, contentType, ttl, note, and shape (a JSON field map or JSON Schema string). Links have id, kind reference/sync/cache/flow, label, direction forward/both, from/to endpoints {node,port}. SQL nodes use qualified table IDs and column names; storage nodes use storage:<unit-id> and item IDs or <item-id>/<field.path> for nested document fields. Empty port targets the whole node. Non-SQL definitions persist in a portable @schemadb-storage DBML comment; SQL exports omit them. This models storage, it does not provision infrastructure.",
+      inputSchema: { id: z.string(), revision: z.string(), storage: storageModelSchema },
+    },
+    ({ id, revision, storage }) => run(async () => {
+      const document = await store.read(id);
+      if (document.revision !== revision) throw new SchemaError('Schema changed. Read its latest revision before saving.', 409);
+      const tables = parseSchema(document.dbml).tables;
+      for (const link of storage.links) {
+        const issue = storageLinkIssue(link, storage.units, tables);
+        if (issue) throw new SchemaError(issue);
+        if (![link.from, link.to].some(endpoint => storage.units.some(unit => storageNodeId(unit.id) === endpoint.node))) throw new SchemaError('Storage connections need at least one storage endpoint. Use DBML Ref for SQL foreign keys.');
+      }
+      try { return await store.write(id, writeStorageModel(document.dbml, storage), revision); }
+      catch (error) { if (error instanceof SchemaError) throw error; throw new SchemaError(errorMessage(error)); }
+    }),
   );
   server.registerTool(
     "validate_schema",

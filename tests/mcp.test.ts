@@ -18,7 +18,7 @@ test("MCP client discovers tools, creates and reads a schema, rejects stale writ
   try {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
-    assert.equal((await client.listTools()).tools.length, 8);
+    assert.equal((await client.listTools()).tools.length, 9);
     const dbml = "Table mcp_test { id integer [pk] }";
     const created = await client.callTool({
       name: "write_schema",

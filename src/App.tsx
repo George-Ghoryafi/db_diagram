@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { routeGeometry, projectToRoute, type TableBounds, type Point as RoutePoint } from "./edge-routing";
+import { routeGeometry, storageLabelPosition, projectToRoute, type TableBounds, type Point as RoutePoint } from "./edge-routing";
 import { useRelationshipRoutes } from "./use-relationship-routes";
 import { DiagramSkeleton } from "./DiagramSkeleton";
 import { AgentSetup } from "./AgentSetup";
@@ -25,6 +25,7 @@ import {
   type EdgeProps,
   type NodeProps,
   type Node,
+  MarkerType,
 } from "@xyflow/react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
@@ -59,6 +60,8 @@ import {
   Route,
   Focus,
   LoaderCircle,
+  Archive,
+  Pencil,
 } from "lucide-react";
 import { addIndex, setAttachedNote, setVisualColor, setTableRecords, findTableRange } from "./dbml-edit";
 import {
@@ -78,6 +81,8 @@ import { dbmlLanguage, dbmlColors } from "./dbml-language";
 import { defaultBundle, bundleColors, type Bundle } from "./bundles";
 import { SchemaTooltip } from "./SchemaTooltip";
 import { DiagramPicker } from "./DiagramPicker";
+import { StorageNode, StoragePanel, StorageEditor, StorageLinkEditor } from './StorageUI';
+import { emptyStorage, readStorageModel, writeStorageModel, storageKinds, storageNodeId, storageNodeHeight, storageLinkIssue, storagePorts, type StorageModel, type StorageUnit, type StorageLink } from './storage-model';
 
 type Field = {
   name: string;
@@ -99,6 +104,7 @@ type Table = {
 };
 type Note = { id: string; name: string; content: string };
 type Model = {
+  storage?: StorageModel;
   notes: Note[];
   tables: Table[];
   refs: {
@@ -180,7 +186,7 @@ function TableNode({ id, data, selected }: NodeProps) {
         <button type="button" aria-label="Table records" title="Table records" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.openRecords as () => void)(); }}><Grid2X2 size={14}/></button>
         <AppearanceSettings label="Table header color" color={t.color || '#316896'} onApply={data.applyColor as (color: string) => Promise<void>} />
       </div>}
-      {data.detail==="names"&&<><Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/><Handle type="source" position={Position.Left} id="header-out-left"/><Handle type="target" position={Position.Right} id="header-in-right"/></>}
+      <Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/><Handle type="source" position={Position.Left} id="header-out-left"/><Handle type="target" position={Position.Right} id="header-in-right"/>
     </div>
     {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
       const pk=primaryKeys.has(f.name),targets=foreignKeys[f.name] || [];
@@ -221,6 +227,7 @@ function GroupNode({ data }: NodeProps) {
   );
 }
 const nodeTypes = {
+  storage: memo(StorageNode),
   table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
   group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.focused === b.data.focused),
 };
@@ -240,9 +247,11 @@ function RelationshipEdge(props: EdgeProps) {
     adjusted[adjusted.length - 1] = { x: props.targetX, y: targetY };
     if (adjusted.length > 2) { adjusted[1].y = sourceY; adjusted[adjusted.length - 2].y = targetY; }
     const geometry = routeGeometry(adjusted, (props.data?.routeBounds || []) as TableBounds[]);
-    const label = props.data?.explicitSelected && props.data?.accessPoint ? projectToRoute(adjusted, props.data.accessPoint as RoutePoint) : geometry.label;
+    const storageLabel = props.data?.storageLink ? storageLabelPosition(adjusted, (props.data.routeBounds as TableBounds[]) || [], String(props.data.label || '').length * 6 + 12) : geometry.label;
+    const label = props.data?.explicitSelected && props.data?.accessPoint ? projectToRoute(adjusted, props.data.accessPoint as RoutePoint) : storageLabel;
     return [geometry.path, label.x, label.y] as const;
   }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route, props.data?.routeBounds, props.data?.accessPoint, props.data?.explicitSelected]);
+  const storageLink = !!props.data?.storageLink;
   const parts = String(props.data?.relation || "").split(":");
   const highlighted = hovered || props.selected || !!props.data?.highlighted;
   const stroke = String(props.data?.color || (highlighted ? "#475aff" : props.style?.stroke || "#9b9ca4"));
@@ -252,10 +261,12 @@ function RelationshipEdge(props: EdgeProps) {
         id={props.id}
         className={`relationship-line flow-${direction}`}
         path={path}
+        markerStart={props.markerStart}
+        markerEnd={props.markerEnd}
         style={{ ...props.style, stroke, strokeWidth: highlighted ? 2 : props.style?.strokeWidth }}
         interactionWidth={10}
       />
-      {[
+      {!storageLink && [
         { x: props.sourceX, y: sourceY, direction: props.sourcePosition === Position.Left ? -1 : 1, cardinality: parts[0], port: ports?.source },
         { x: props.targetX, y: targetY, direction: props.targetPosition === Position.Right ? 1 : -1, cardinality: parts[1], port: ports?.target },
       ].map(({ x, y, direction, cardinality, port }, index) => (port?.showSymbol || hovered) && (
@@ -278,11 +289,11 @@ function RelationshipEdge(props: EdgeProps) {
       </g>}
       <EdgeLabelRenderer>
         {!!props.data?.explicitSelected && <div className="edge-access-icons nodrag nopan" style={{transform:`translate(-50%,-100%) translate(${(props.data?.accessPoint as {x:number;y:number} | undefined)?.x ?? labelX}px,${((props.data?.accessPoint as {x:number;y:number} | undefined)?.y ?? labelY)-12}px)`}}>
-          <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#9b9ca4')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />
+          {storageLink ? <button aria-label="Edit storage connection" onClick={props.data?.onEdit as () => void}><Pencil size={14}/></button> : <AppearanceSettings label="Relationship color" color={String(props.data?.color || '#9b9ca4')} onApply={props.data?.applyColor as (color: string) => Promise<void>} />}
         </div>}
         {(!!props.data?.explicitSelected || !!props.data?.showLabel) && (
           <span
-            className="edge-name nodrag nopan"
+            className={"edge-name nodrag nopan" + (storageLink ? " storage-edge-name" : "")}
             style={{
               transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)`,
             }}
@@ -318,6 +329,12 @@ function Workspace() {
     [columns, setColumns] = useState<string[]>([]),
     [unique, setUnique] = useState(false),
     [groupColor, setGroupColor] = useState("#537bad");
+  const storage = model.storage || emptyStorage;
+  const [editingStore, setEditingStore] = useState<StorageUnit>();
+  const [editingLink, setEditingLink] = useState<StorageLink>();
+  const storageEditBase = useRef('');
+  const openStore = (unit?: StorageUnit) => { storageEditBase.current = latestCode.current; setEditingStore(unit); setModal('storage'); };
+  const openStorageLink = (link?: StorageLink) => { storageEditBase.current = latestCode.current; setEditingLink(link); setModal('storage-link'); };
   const [arrangement, setArrangement] = useState<Arrangement>("left-right");
   const [selectedEdge, setSelectedEdge] = useState("");
   const [focusedGroup, setFocusedGroup] = useState("");
@@ -656,7 +673,11 @@ function Workspace() {
                   selected: t.id === selected,
                   zIndex: 1,
                 };
-              });
+              }).concat((m.storage?.units || []).map<Node>((unit, index) => {
+                const id = storageNodeId(unit.id), existing = old.find(node => node.id === id);
+                const right = Math.max(70, ...old.filter(node => node.type === 'table').map(node => node.position.x + (node.measured?.width || 260)), ...m.tables.map(table => (doc.layout[table.id]?.x || 70) + 260));
+                return { ...existing, id, type: 'storage', position: existing?.position || doc.layout[id] || { x: right + 160, y: 100 + (m.storage?.units || []).slice(0, index).reduce((height, unit) => height + storageNodeHeight(unit) + 50, 0) }, data: { unit }, selected: id === selected };
+              }));
           });
         })
         .catch((e) => {
@@ -781,7 +802,7 @@ function Workspace() {
     if (!doc) return;
     clearTimeout(layoutTimer.current);
     const layout = {...doc.layout,...Object.fromEntries(
-      flow.getNodes().filter(n => n.type === "table").map(n => [n.id, n.position]),
+      flow.getNodes().filter(n => n.type === "table" || n.type === "storage").map(n => [n.id, n.position]),
     )};
     layoutTimer.current = setTimeout(() => {
       api("/schemas/" + doc.id + "/layout", { layout }, "PUT").catch((e) =>
@@ -897,7 +918,11 @@ function Workspace() {
     setError("");
     try {
       const positions = await arrangeTables(
-        flow.getNodes().filter(n => n.type === "table").map(n => {
+        flow.getNodes().filter(n => n.type === "table" || n.type === "storage").map(n => {
+          if (n.type === 'storage') {
+            const unit = n.data.unit as StorageUnit;
+            return { id: n.id, width: n.measured?.width || 300, height: n.measured?.height || storageNodeHeight(unit, detail === 'names'), fields: [{name: 'header', y: 25}, ...storagePorts(unit).map(port => ({ name: port.port, y: flow.getInternalNode(n.id)?.internals.handleBounds?.source?.find(handle => handle.id === port.port + '-out')?.y || 96 }))] };
+          }
           const table = n.data.table as Table;
           const fields = visibleFields(table.fields, detail, (displayedNodes.find(d => d.id === n.id)?.data.keys as string[]) || []);
           return {
@@ -906,7 +931,7 @@ function Workspace() {
             height: n.measured?.height || 35 + fields.length * 30 + (table.indexes.length ? 25 : 0),
             fields: fields.map((field, index) => ({ name: field.name, y: 33 + index * 30 + 15 })),
           };
-        }), model.refs, model.groups, mode,
+        }), [...model.refs, ...storage.links.filter(link => !storageLinkIssue(link, storage.units, model.tables)).map(link => ({ fromTable: link.from.node, fromFields: [link.from.port || 'header'], toTable: link.to.node, toFields: [link.to.port || 'header'], relation: '1:*' }))], model.groups, mode,
       );
       if (!current()) return;
       setSelected(""); setSelectedEdge(""); setEdgeAccessPoint(undefined); setFocusedGroup("");
@@ -928,7 +953,7 @@ function Workspace() {
     setTableId(table.id);setNoteField("");setNoteText(table.note || "");setError("");setModal("note");
   };
   useEffect(() => {
-    if (hoveredField && !model.tables.some(table => table.id === hoveredField.tableId && table.fields.some(field => field.name === hoveredField.field))) setHoveredField(null);
+    if (hoveredField && !model.tables.some(table => table.id === hoveredField.tableId && table.fields.some(field => field.name === hoveredField.field)) && !storage.units.some(unit => storageNodeId(unit.id) === hoveredField.tableId && storagePorts(unit).some(port => port.port === hoveredField.field))) setHoveredField(null);
   }, [model, hoveredField]);
   const highlightedRefs = useMemo(() => highlightedRelationships(
     model.refs,
@@ -940,6 +965,7 @@ function Workspace() {
   const tableData = useMemo(() => new Map(nodes.filter(n => n.type === "table").map((n) => {
     const t = n.data.table as Table;
     const keys = [
+      ...storage.links.flatMap(link => [link.from, link.to].filter(endpoint => endpoint.node === t.id && endpoint.port).map(endpoint => endpoint.port)),
       ...model.refs.flatMap((r) =>
         r.fromTable === t.id
           ? r.fromFields
@@ -972,7 +998,11 @@ function Workspace() {
           ]),
     }] as const;
   })), [model, detail, highlightedRefs]);
-  const displayedNodes = useMemo(() => nodes.map(n => ({ ...n, selected: n.id === selected, zIndex: 2, data: tableData.get(n.id) || n.data })), [nodes, selected, tableData]);
+  const storageData = useMemo(() => new Map(storage.units.map(unit => [storageNodeId(unit.id), {
+    unit, detail, onEdit: () => openStore(unit),
+    onPortHover: (port: string | null) => setHoveredField(current => port ? { tableId: storageNodeId(unit.id), field: port } : current?.tableId === storageNodeId(unit.id) ? null : current),
+  }])), [storage.units, detail]);
+  const displayedNodes = useMemo<Node[]>(() => nodes.map(n => ({ ...n, selected: n.id === selected, zIndex: 2, data: tableData.get(n.id) || storageData.get(n.id) || n.data })), [nodes, selected, tableData, storageData]);
   const groupNodes: Node[] = useMemo(() => model.groups.flatMap((g) => {
     const members = nodes.filter((n) => g.tables.includes(n.id));
     if (!members.length) return [];
@@ -1018,24 +1048,25 @@ function Workspace() {
   const obstacles = useMemo(() => displayedNodes.map(n => ({
     ...n.position,
     width: n.measured?.width || 260,
-    height: n.measured?.height || (detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
+    height: n.measured?.height || (n.type === "storage" ? storageNodeHeight(n.data.unit as StorageUnit, detail === "names") : detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
   })), [nodes, detail, tableData]);
-  const attachments = useMemo(() => Object.fromEntries(model.refs.map(ref => {
+  const canvasRefs = useMemo(() => [...model.refs.map(ref => ({ ...ref, storageLink: undefined as StorageLink | undefined })), ...storage.links.filter(link => !storageLinkIssue(link, storage.units, model.tables)).map(link => ({ id: 'storage-link:' + link.id, fromTable: link.from.node, fromFields: [link.from.port || 'header'], toTable: link.to.node, toFields: [link.to.port || 'header'], name: link.label || link.kind, color: '#127c80', relation: link.direction === 'both' ? '*:*' : '1:*', storageLink: link }))], [model.refs, model.tables, storage]);
+  const attachments = useMemo(() => Object.fromEntries(canvasRefs.map(ref => {
     const from = nodes.find(node => node.id === ref.fromTable), to = nodes.find(node => node.id === ref.toTable);
     return [ref.id, from && to ? relationshipSides({ x: from.position.x, width: from.measured?.width || 260 }, { x: to.position.x, width: to.measured?.width || 260 }, from.id === to.id) : { sourceSide: "right" as const, targetSide: "left" as const }];
-  })), [nodes, model.refs]);
+  })), [nodes, canvasRefs]);
   const attachmentKey = JSON.stringify(attachments);
-  const ports = useMemo(() => relationshipPorts(model.refs.map(ref => ({ ...ref, ...attachments[ref.id] })), detail, selectedEdge, highlightedRefs), [model.refs, detail, selectedEdge, highlightedRefs, attachmentKey]);
-  const sourceHandle = (refId: string, field: string) => (detail === "names" ? "header" : field) + (attachments[refId].sourceSide === "left" ? "-out-left" : "-out");
-  const targetHandle = (refId: string, field: string) => (detail === "names" ? "header" : field) + (attachments[refId].targetSide === "right" ? "-in-right" : "-in");
-  const routingRequests = model.refs.flatMap(ref => {
+  const ports = useMemo(() => ({ ...relationshipPorts(model.refs.map(ref => ({ ...ref, ...attachments[ref.id] })), detail, selectedEdge, highlightedRefs), ...Object.fromEntries(canvasRefs.filter(ref => ref.storageLink).map(ref => [ref.id, { source: { offset: 0, halfHeight: 4, width: 10, showSymbol: false }, target: { offset: 0, halfHeight: 4, width: 10, showSymbol: false } }])) }), [canvasRefs, model.refs, detail, selectedEdge, highlightedRefs, attachmentKey]);
+  const sourceHandle = (refId: string, field: string) => (detail === "names" || !field ? "header" : field) + (attachments[refId].sourceSide === "left" ? "-out-left" : "-out");
+  const targetHandle = (refId: string, field: string) => (detail === "names" || !field ? "header" : field) + (attachments[refId].targetSide === "right" ? "-in-right" : "-in");
+  const routingRequests = canvasRefs.flatMap(ref => {
     const from = displayedNodes.find(n => n.id === ref.fromTable), to = displayedNodes.find(n => n.id === ref.toTable);
     if (!from || !to) return [];
     const endpoint = (node: Node, field: string, source: boolean) => {
       const side = source ? attachments[ref.id].sourceSide : attachments[ref.id].targetSide;
       const handleId = source ? sourceHandle(ref.id, field) : targetHandle(ref.id, field);
       const handle = flow.getInternalNode(node.id)?.internals.handleBounds?.[source ? "source" : "target"]?.find(handle => handle.id === handleId);
-      const fields = visibleFields((node.data.table as Table).fields, detail, (node.data.keys as string[]) || []);
+      const fields = node.type === "table" ? visibleFields((node.data.table as Table).fields, detail, (node.data.keys as string[]) || []) : [];
       return { x: node.position.x + (handle ? handle.x + handle.width / 2 : side === "right" ? node.measured?.width || 260 : 0),
         y: node.position.y + (handle ? handle.y + handle.height / 2 : detail === "names" ? 16.5 : 49 + Math.max(0, fields.findIndex(f => f.name === field)) * 30) };
     };
@@ -1049,9 +1080,9 @@ function Workspace() {
   const movingTables = useMemo(() => new Set(draggingKey.split("|")), [draggingKey]);
   const routing = useRelationshipRoutes({ key: routingKey, relationships: routingRequests, tables: obstacles }, !!draggingKey);
   const relationshipRoutes = routing.routes;
-  const edges = useMemo(() => model.refs.map((r) => {
+  const edges = useMemo(() => canvasRefs.map((r) => {
     const active = r.id === selectedEdge;
-    const related = highlightedRefs.has(r.id);
+    const related = r.storageLink ? r.id === selectedEdge || (hoveredField ? (r.fromTable === hoveredField.tableId && r.fromFields.includes(hoveredField.field)) || (r.toTable === hoveredField.tableId && r.toFields.includes(hoveredField.field)) : highlight && (!selected || r.fromTable === selected || r.toTable === selected)) : highlightedRefs.has(r.id);
     return {
       id: r.id,
       source: r.fromTable,
@@ -1059,11 +1090,15 @@ function Workspace() {
       sourceHandle: sourceHandle(r.id, r.fromFields[0]),
       targetHandle: targetHandle(r.id, r.toFields[0]),
       type: "relationship",
+      markerEnd: r.storageLink ? { type: MarkerType.ArrowClosed, color: '#127c80', width: 13, height: 13 } : undefined,
+      markerStart: r.storageLink?.direction === 'both' ? { type: MarkerType.ArrowClosed, color: '#127c80', width: 13, height: 13 } : undefined,
       ariaLabel: `Relationship ${r.name || r.fromTable + " to " + r.toTable}`,
       selected: active || (!hoveredField && !!selected && (r.fromTable===selected || r.toTable===selected)),
       animated: false,
       interactionWidth: 10,
       data: {
+        storageLink: r.storageLink,
+        onEdit: () => openStorageLink(r.storageLink),
         ports: ports[r.id],
         route: routing.sides?.[r.id] === `${attachments[r.id].sourceSide}:${attachments[r.id].targetSide}` ? relationshipRoutes[r.id] : undefined,
         routeBounds: routing.tables,
@@ -1074,7 +1109,7 @@ function Workspace() {
         relation: r.relation,
         highlighted: related,
         explicitSelected:active,
-        showLabel: related && !!r.name,
+        showLabel: !!r.storageLink || (related && !!r.name),
         label:
           r.name ||
           `${r.fromTable}.${r.fromFields.join(", ")} → ${r.toTable}.${r.toFields.join(", ")}`,
@@ -1083,9 +1118,10 @@ function Workspace() {
         stroke: r.color || (active || related ? "#475aff" : "#9b9ca4"),
         strokeWidth: active || related ? 2 : 1,
         opacity: 1,
+        strokeDasharray: r.storageLink ? "5 5" : undefined,
       },
     };
-  }), [model.refs, ports, relationshipRoutes, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables]);
+  }), [canvasRefs, highlight, ports, relationshipRoutes, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables]);
   const applyVisualColor = async (kind: 'table' | 'relationship' | 'group', id: string, color: string) => {
     const previous = latestCode.current;
     const next = await setVisualColor(previous, kind, id, color);
@@ -1145,7 +1181,7 @@ function Workspace() {
   }, [modal, doc?.id, loading, focusedGroup]);
   const focus = (id: string) => {
     setSelectedEdge("");
-    setSelected(model.tables.some((t) => t.id === id) ? id : "");
+    setSelected(nodes.some(node => node.id === id) ? id : "");
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })));
     const n = flow.getNode(id);
     if (n)
@@ -1155,6 +1191,14 @@ function Workspace() {
         duration: 400,
         maxZoom: 1.1,
       });
+  };
+  const updateStorage = async (next: StorageModel, expected?: string) => {
+    const previous = latestCode.current;
+    if (expected !== undefined && expected !== previous) throw new Error('The diagram changed while this editor was open. Reopen it before applying your changes.');
+    const updated = writeStorageModel(previous, next);
+    await api('/parse', { dbml: updated });
+    if (latestCode.current !== previous) throw new Error('The diagram changed. Reopen the storage editor and try again.');
+    change(updated);
   };
   return (
     <div className="app">
@@ -1252,7 +1296,7 @@ function Workspace() {
         {!loading && editorVisible && doc && (
           <aside className="editor">
             <div className="tabs">
-              {["DBML", "Tables", "Groups", "Indexes"].map((t) => (
+              {["DBML", "Tables", "Groups", "Indexes", "Storage"].map((t) => (
                 <button
                   className={tab === t ? "active" : ""}
                   key={t}
@@ -1262,6 +1306,8 @@ function Workspace() {
                     <Code2 size={14} />
                   ) : t === "Groups" ? (
                     <Layers size={14} />
+                  ) : t === "Storage" ? (
+                    <Archive size={14} />
                   ) : t === "Indexes" ? (
                     <KeyRound size={14} />
                   ) : (
@@ -1315,7 +1361,7 @@ function Workspace() {
                   <span>⌘S to save</span>
                 </div>
               </>
-            ) : (
+            ) : tab === 'Storage' ? <StoragePanel model={storage} tables={model.tables} onCreate={() => openStore()} onEdit={openStore} onFocus={focus} onLink={openStorageLink} onDeleteLink={id => { void updateStorage({ ...readStorageModel(latestCode.current), links: readStorageModel(latestCode.current).links.filter(link => link.id !== id) }).catch(error => setError(error.message)); }} /> : (
               <div className="explorer">
                 <div className="explorer-title">
                   <h2>{tab}</h2>
@@ -1447,7 +1493,7 @@ function Workspace() {
             <div>
               <span>
                 {model.tables.length} tables <i>·</i> {model.refs.length}{" "}
-                relationships
+                relationships{!!storage.units.length && <> <i>·</i> {storage.units.length} stores</>}
               </span>
             </div>
             <span className="private">
@@ -1480,6 +1526,7 @@ function Workspace() {
             }}
             onNodeClick={(_, n) => {
               if (n.type === "table") focusSelection(n.id);
+              if (n.type === "storage") { setSelected(n.id); setSelectedEdge(""); setTab("Storage"); setEditorVisible(true); }
             }}
             onPaneClick={() => {
               setFocusedGroup("");
@@ -1534,7 +1581,7 @@ function Workspace() {
               />
             }
             <MiniMap
-              nodeColor={(n) => (n.data.table as Table)?.color || "#316896"}
+              nodeColor={(n) => n.type === "storage" ? storageKinds[(n.data.unit as StorageUnit).kind].color : (n.data.table as Table)?.color || "#316896"}
               maskColor="#f6f8fac9"
             />
           </ReactFlow>
@@ -1710,14 +1757,14 @@ function Workspace() {
           }}
         >
           <section
-            className={`modal${modal === "agent" && cloudAvailable ? " agent-modal" : ""}`}
+            className={`modal${modal === "agent" && cloudAvailable ? " agent-modal" : ""}${modal.startsWith("storage") ? " storage-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-label={modal}
           >
             <div className="modal-heading">
               <h2>
-                {modal === "arrange"
+                {modal === "storage" ? (editingStore ? "Edit storage schema" : "Add storage schema") : modal === "storage-link" ? "Connect storage" : modal === "arrange"
                   ? "Auto arrange diagram"
                   : modal === "search"
                     ? "Search diagram"
@@ -1741,7 +1788,11 @@ function Workspace() {
                 <X size={18} />
               </button>
             </div>
-            {modal === "arrange" ? (
+            {modal === 'storage' ? <StorageEditor key={editingStore?.id || 'new'} unit={editingStore} onClose={() => setModal('')} onSave={async unit => {
+              const current = readStorageModel(latestCode.current);
+              await updateStorage({ ...current, units: current.units.some(existing => existing.id === unit.id) ? current.units.map(existing => existing.id === unit.id ? unit : existing) : [...current.units, unit] }, storageEditBase.current);
+              setTab('Storage');
+            }} onDelete={async id => { const current = readStorageModel(latestCode.current); await updateStorage({ ...current, units: current.units.filter(unit => unit.id !== id), links: current.links.filter(link => link.from.node !== storageNodeId(id) && link.to.node !== storageNodeId(id)) }, storageEditBase.current); setSelected(''); }} /> : modal === 'storage-link' && storage.units.length ? <StorageLinkEditor link={editingLink} model={storage} tables={model.tables} onClose={() => setModal('')} onSave={async link => { const current = readStorageModel(latestCode.current); await updateStorage({ ...current, links: current.links.some(existing => existing.id === link.id) ? current.links.map(existing => existing.id === link.id ? link : existing) : [...current.links, link] }, storageEditBase.current); }} /> : modal === "arrange" ? (
               <>
                 <p>
                   Choose a layout for your tables. Your schema stays unchanged.
@@ -1801,7 +1852,7 @@ function Workspace() {
             ) : modal === "search" ? (
               <>
                 <label>
-                  Find tables, fields, relationships, groups, or notes
+                  Find tables, fields, storage, relationships, or groups
                   <input
                     autoFocus
                     value={canvasSearch}
@@ -1828,6 +1879,7 @@ function Workspace() {
                         kind: "Relationship",
                       })),
 
+                      storage.units.flatMap(unit => [{ label: unit.name, id: storageNodeId(unit.id), kind: storageKinds[unit.kind].label }, ...unit.items.map(item => ({ label: unit.name + '.' + item.name, id: storageNodeId(unit.id), kind: storageKinds[unit.kind].item }))]),
                       model.groups.map((g) => ({
                         label: g.name,
                         id: g.tables[0] || "",
