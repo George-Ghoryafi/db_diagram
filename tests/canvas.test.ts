@@ -157,7 +157,7 @@ test("all layouts handle a dense 15-table graph with field ports, cycles and ver
   const portRefs = refs.map((ref, i) => ({ ...ref, id: String(i) }));
   const ports = relationshipPorts(portRefs, 'all');
   const original = JSON.stringify({ items, refs, groups });
-  for (const mode of ["left-right", "pipeline", "snowflake", "compact"] as Arrangement[]) {
+  for (const mode of ["left-right", "pipeline", "snowflake", "compact", "groups"] as Arrangement[]) {
     const positions = await arrangeTables(items, refs, groups, mode);
     assert.equal(Object.keys(positions).length, items.length);
     const tables = items.map(item => ({ ...positions[item.id], width:item.width, height:item.height }));
@@ -174,7 +174,9 @@ test("all layouts handle a dense 15-table graph with field ports, cycles and ver
         for(const other of segments) {
           if(other.id===id)continue;
           if(a.y===b.y && other.a.y===other.b.y && a.y===other.a.y)
-            assert.ok(Math.min(Math.max(a.x,b.x),Math.max(other.a.x,other.b.x))<=Math.max(Math.min(a.x,b.x),Math.min(other.a.x,other.b.x)),`${mode}: horizontal lines stay separate`);
+            assert.ok(Math.min(Math.max(a.x,b.x),Math.max(other.a.x,other.b.x))<=Math.max(Math.min(a.x,b.x),Math.min(other.a.x,other.b.x)) ||
+              (portRefs[Number(id)].fromTable === portRefs[Number(other.id)].fromTable && a.y === positions[portRefs[Number(id)].fromTable].y + 78 + ports[id].source.offset) ||
+              (portRefs[Number(id)].toTable === portRefs[Number(other.id)].toTable && a.y === positions[portRefs[Number(id)].toTable].y + 48 + ports[id].target.offset),`${mode}: only common attribute stems share horizontal lines`);
           if(a.x===b.x && other.a.x===other.b.x && a.x===other.a.x)
             assert.ok(Math.min(Math.max(a.y,b.y),Math.max(other.a.y,other.b.y))<=Math.max(Math.min(a.y,b.y),Math.min(other.a.y,other.b.y)),`${mode}: vertical lines stay separate`);
         }
@@ -193,22 +195,36 @@ test("all layouts handle a dense 15-table graph with field ports, cycles and ver
   assert.equal(JSON.stringify({ items, refs, groups }), original);
 });
 
-test('shared attribute ports keep each relationship inside its own row without overlapping symbols', async () => {
+test('attributes share one port per cardinality and selection changes only the symbol owner', async () => {
   const { relationshipPorts, relationshipFlow } = await import('../src/canvas');
-  const refs = Array.from({ length: 6 }, (_, i) => ({ id: String(i), fromTable: 'users', fromFields: ['id'], toTable: 'orders'+i, toFields: ['user_id'] }));
+  const refs = Array.from({ length: 6 }, (_, i) => ({ id: String(i), relation: i % 2 ? '*:1' : '1:1', fromTable: 'users', fromFields: ['id'], toTable: 'orders'+i, toFields: ['user_id'] }));
   const ports = relationshipPorts(refs, 'all');
-  const slots = refs.map(ref => ports[ref.id].source);
-  assert.equal(new Set(slots.map(slot => slot.offset)).size, 6);
-  slots.forEach((slot, i) => {
-    assert.ok(Math.abs(slot.offset) + slot.halfHeight < 15);
-    if (i) assert.ok(slot.offset - slot.halfHeight > slots[i-1].offset + slots[i-1].halfHeight);
-    assert.deepEqual(ports[refs[i].id].target, { offset: 0, halfHeight: 4, width: 10 });
-  });
+  assert.equal(new Set(refs.map(ref => ports[ref.id].source.offset)).size, 2);
+  assert.equal(refs.filter(ref => ports[ref.id].source.showSymbol).length, 2);
+  const selected = relationshipPorts(refs, 'all', '4');
+  assert.equal(selected['4'].source.showSymbol, true);
+  assert.equal(selected['0'].source.showSymbol, false);
+  assert.equal(relationshipPorts(refs, 'all', '', new Set(['4']))['4'].source.showSymbol, true);
+  refs.forEach(ref => { assert.equal(selected[ref.id].source.offset, ports[ref.id].source.offset); assert.equal(ports[ref.id].target.showSymbol, true); });
+  const onlyOneType = relationshipPorts(refs.map(ref => ({...ref, relation:'*:1'})), 'all');
+  assert.equal(new Set(refs.map(ref => onlyOneType[ref.id].source.offset)).size, 1);
+  assert.equal(refs.filter(ref => onlyOneType[ref.id].source.showSymbol).length, 1);
   assert.equal(relationshipFlow('1:*'), 'forward');
   assert.equal(relationshipFlow('*:1'), 'reverse');
   assert.equal(relationshipFlow('*:*'), 'both');
-  assert.equal(relationshipFlow('1:1'), 'both');
   const separate = [refs[0], {...refs[1], fromFields:['other']}];
   assert.equal(relationshipPorts(separate, 'all')['0'].source.offset, 0);
   assert.notEqual(relationshipPorts(separate, 'names')['0'].source.offset, 0);
+});
+
+test('attribute hover temporarily highlights incoming, outgoing and composite references', async () => {
+  const { highlightedRelationships } = await import('../src/canvas');
+  const refs = [
+    {id:'out',fromTable:'a',fromFields:['org','id'],toTable:'b',toFields:['org','id']},
+    {id:'in',fromTable:'c',fromFields:['aid'],toTable:'a',toFields:['id']},
+    {id:'other',fromTable:'a',fromFields:['different'],toTable:'d',toFields:['id']},
+  ];
+  assert.deepEqual([...highlightedRelationships(refs,false,'a','',{tableId:'a',field:'id'})],['out','in']);
+  assert.deepEqual([...highlightedRelationships(refs,false,'a','')],['out','in','other']);
+  assert.deepEqual([...highlightedRelationships(refs,false,'','other',{tableId:'a',field:'org'})],['out','other']);
 });

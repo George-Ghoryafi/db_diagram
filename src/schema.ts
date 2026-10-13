@@ -16,12 +16,14 @@ export function errorMessage(error: unknown): string {
     String(error)
   );
 }
+export const MAX_DBML_BYTES = 100_000_000;
+export function validateDbmlText(text: unknown): asserts text is string {
+  if (typeof text !== "string") throw new SchemaError("DBML must be a string.");
+  if (text.length > MAX_DBML_BYTES || new TextEncoder().encode(text).byteLength > MAX_DBML_BYTES)
+    throw new SchemaError("DBML must be no larger than 100 MB.", 413);
+}
 export function database(text: string) {
-  if (
-    typeof text !== "string" ||
-    new TextEncoder().encode(text).byteLength > 2_000_000
-  )
-    throw new SchemaError("DBML must be a string under 2 MB.");
+  validateDbmlText(text);
   try {
     return Parser.parse(text, "dbmlv2");
   } catch (error) {

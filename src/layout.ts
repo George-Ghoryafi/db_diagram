@@ -1,11 +1,11 @@
 import type { ElkNode, LayoutOptions } from "elkjs/lib/elk-api";
-export type Arrangement = "left-right" | "pipeline" | "snowflake" | "compact";
+export type Arrangement = "left-right" | "pipeline" | "snowflake" | "compact" | "groups";
 type Item = { id: string; width: number; height: number; fields?: { name: string; y: number }[] };
 type Ref = { fromTable: string; toTable: string; fromFields?: string[]; toFields?: string[]; relation?: string };
 type Point = { x: number; y: number };
 
 // ELK mode settings observed in dbdiagram's shipped renderer.
-const options: Record<Exclude<Arrangement, "compact">, LayoutOptions> = {
+const options: Record<Exclude<Arrangement, "compact" | "groups">, LayoutOptions> = {
   "left-right": {
     "elk.algorithm": "layered",
     "elk.layered.spacing.baseValue": "40",
@@ -43,20 +43,40 @@ export async function arrangeTables(items: Item[], refs: Ref[], groups: { tables
   const positions: Record<string, Point> = {};
   if (!items.length) return positions;
   const byId = new Map(items.map(item => [item.id, item]));
-  if (mode === "compact") {
-    let x = 70;
-    const columns = Array.from({ length: Math.min(items.length, Math.max(4, Math.floor(Math.sqrt(items.length)))) }, () => [] as Item[]);
-    items.forEach((item, index) => columns[index % columns.length].push(item));
-    for (const column of columns) {
-      let y = 100;
-      for (const item of column) {
-        positions[item.id] = { x, y };
-        y += item.height + 50;
-      }
-      x += Math.max(...column.map(item => item.width)) + 50;
+  if (mode === "groups") {
+    const claimed = new Set<string>();
+    const blocks: Item[] = [];
+    const membersByBlock = new Map<string, { item: Item; offset: Point }[]>();
+    for (const [index, group] of groups.entries()) {
+      const ids = new Set(group.tables);
+      const members = items.filter(item => ids.has(item.id) && !claimed.has(item.id));
+      if (!members.length) continue;
+      const packed = compactPositions(members, Math.ceil(Math.sqrt(members.length)));
+      const offsets = members.map(item => {
+        claimed.add(item.id);
+        return { item, offset: { x: packed[item.id].x - 70 + 22, y: packed[item.id].y - 100 + 38 } };
+      });
+      const id = "group:" + index;
+      membersByBlock.set(id, offsets);
+      blocks.push({ id,
+        width: Math.max(...offsets.map(({ item, offset }) => offset.x + item.width)) + 22,
+        height: Math.max(...offsets.map(({ item, offset }) => offset.y + item.height)) + 22,
+      });
+    }
+    if (!blocks.length) return arrangeTables(items, refs, groups, "compact");
+    for (const item of items) {
+      if (claimed.has(item.id)) continue;
+      const id = "table:" + item.id;
+      blocks.push({ ...item, id });
+      membersByBlock.set(id, [{ item, offset: { x: 0, y: 0 } }]);
+    }
+    const packed = compactPositions(blocks, Math.ceil(Math.sqrt(blocks.length)));
+    for (const [id, members] of membersByBlock) {
+      for (const { item, offset } of members) positions[item.id] = { x: packed[id].x + offset.x, y: packed[id].y + offset.y };
     }
     return positions;
   }
+  if (mode === "compact") return compactPositions(items, Math.max(4, Math.floor(Math.sqrt(items.length))));
   const portId = (table: string, field: string) => "port:" + JSON.stringify([table, field]);
   const nodes = new Map(items.map(item => [item.id, {
     id: "table:" + item.id,
@@ -129,5 +149,18 @@ export async function arrangeTables(items: Item[], refs: Ref[], groups: { tables
   }
   result.children?.forEach(node => collect(node, { x: 70, y: 100 }));
   if (Object.keys(positions).length !== items.length) throw new Error("Layout did not include every table.");
+  return positions;
+}
+
+function compactPositions(items: Item[], count: number) {
+  const positions: Record<string, Point> = {};
+  let x = 70;
+  const columns = Array.from({ length: Math.min(items.length, count) }, () => [] as Item[]);
+  items.forEach((item, index) => columns[index % columns.length].push(item));
+  for (const column of columns) {
+    let y = 100;
+    for (const item of column) { positions[item.id] = { x, y }; y += item.height + 50; }
+    x += Math.max(...column.map(item => item.width)) + 50;
+  }
   return positions;
 }

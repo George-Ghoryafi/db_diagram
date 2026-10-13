@@ -1,7 +1,7 @@
 export type Point = { x: number; y: number };
 export type TableBounds = Point & { width: number; height: number };
-type Segment = { a: Point; b: Point; terminal?: boolean };
-export type RelationshipRoute = { id: string; source: Point; target: Point };
+type Segment = { a: Point; b: Point; terminal?: boolean; endpoints?: Point[] };
+export type RelationshipRoute = { id: string; source: Point; target: Point; sourceSide?: "left" | "right"; targetSide?: "left" | "right" };
 const laneGap = 12;
 
 // Reserve cable lanes across the whole diagram, not independently per edge.
@@ -10,12 +10,12 @@ export function routeRelationships(relationships: RelationshipRoute[], tables: T
   for (const ref of relationships) {
     let route: Point[] | null = null;
     for (const [spacing, stem, clearance] of [[12,24,12],[8,24,6],[4,16,2],[2,16,0],[2,48,0],[1,24,0],[1,4,0],[.25,1,0]]) {
-      route = routeWithClearance(ref.source, ref.target, tables, clearance, occupied, stem, spacing);
+      route = routeWithClearance(ref.source, ref.target, tables, clearance, occupied, stem, spacing, ref.sourceSide, ref.targetSide);
       if (route) break;
     }
     routes[ref.id] = route;
     if (!route) continue;
-    route.slice(1).forEach((point, index) => occupied.push({ a: route![index], b: point, terminal: index === 0 || index === route!.length - 2 }));
+    route.slice(1).forEach((point, index) => occupied.push({ a: route![index], b: point, terminal: index === 0 || index === route!.length - 2, endpoints: [...(index === 0 ? [ref.source] : []), ...(index === route!.length - 2 ? [ref.target] : [])] }));
   }
   return routes;
 }
@@ -37,11 +37,11 @@ export function routeRelationship(source: Point, target: Point, tables: TableBou
   return null;
 }
 
-function routeWithClearance(source: Point, target: Point, tables: TableBounds[], clearance: number, occupied: Segment[] = [], stem = 24, spacing = laneGap): Point[] | null {
+function routeWithClearance(source: Point, target: Point, tables: TableBounds[], clearance: number, occupied: Segment[] = [], stem = 24, spacing = laneGap, sourceSide: "left" | "right" = "right", targetSide: "left" | "right" = "left"): Point[] | null {
   const obstacles = tables.map(t => ({ x: t.x - clearance, y: t.y - clearance, width: t.width + clearance * 2, height: t.height + clearance * 2 }));
-  const sourceGap = Math.min(stem * 2, ...obstacles.filter(t => t.x > source.x && source.y > t.y && source.y < t.y + t.height).map(t => t.x - source.x));
-  const targetGap = Math.min(stem * 2, ...obstacles.filter(t => t.x + t.width < target.x && target.y > t.y && target.y < t.y + t.height).map(t => target.x - t.x - t.width));
-  const start = { x: source.x + sourceGap / 2, y: source.y }, end = { x: target.x - targetGap / 2, y: target.y };
+  const gap = (point: Point, side: "left" | "right") => Math.min(stem * 2, ...obstacles.filter(table => point.y > table.y && point.y < table.y + table.height && (side === "right" ? table.x > point.x : table.x + table.width < point.x)).map(table => side === "right" ? table.x - point.x : point.x - table.x - table.width));
+  const start = { x: source.x + (sourceSide === "right" ? 1 : -1) * gap(source, sourceSide) / 2, y: source.y };
+  const end = { x: target.x + (targetSide === "right" ? 1 : -1) * gap(target, targetSide) / 2, y: target.y };
   const xs = [...new Set([start.x, end.x, ...obstacles.flatMap(t => [t.x, t.x + t.width]), ...occupied.filter(s => s.a.x === s.b.x).flatMap(s => [s.a.x - spacing, s.a.x + spacing])])].sort((a, b) => a - b);
   const ys = [...new Set([start.y, end.y, ...obstacles.flatMap(t => [t.y, t.y + t.height]), ...occupied.filter(s => s.a.y === s.b.y).flatMap(s => [s.a.y - spacing, s.a.y + spacing])])].sort((a, b) => a - b);
   const point = (index: number): Point => ({ x: xs[index % xs.length], y: ys[Math.floor(index / xs.length)] });
@@ -76,10 +76,11 @@ function routeWithClearance(source: Point, target: Point, tables: TableBounds[],
     }
     return first;
   };
-  const parallelBlocked = (a: Point, b: Point) => occupied.some(s => a.y === b.y && s.a.y === s.b.y
+  const sharedEndpoint = (segment: Segment) => segment.endpoints?.some(point => (point.x === source.x && point.y === source.y) || (point.x === target.x && point.y === target.y));
+  const parallelBlocked = (a: Point, b: Point) => occupied.some(s => !sharedEndpoint(s) && (a.y === b.y && s.a.y === s.b.y
     ? Math.abs(a.y - s.a.y) < (s.terminal ? 0.01 : spacing - 0.01) && Math.max(Math.min(a.x,b.x),Math.min(s.a.x,s.b.x)) < Math.min(Math.max(a.x,b.x),Math.max(s.a.x,s.b.x))
-    : a.x === b.x && s.a.x === s.b.x && Math.abs(a.x - s.a.x) < (s.terminal ? 0.01 : spacing - 0.01) && Math.max(Math.min(a.y,b.y),Math.min(s.a.y,s.b.y)) < Math.min(Math.max(a.y,b.y),Math.max(s.a.y,s.b.y)));
-  const overlapsTerminal = (a: Point, b: Point) => occupied.some(s => a.y === b.y && s.a.y === s.b.y && Math.abs(a.y - s.a.y) < .01 && Math.max(Math.min(a.x,b.x),Math.min(s.a.x,s.b.x)) < Math.min(Math.max(a.x,b.x),Math.max(s.a.x,s.b.x)));
+    : a.x === b.x && s.a.x === s.b.x && Math.abs(a.x - s.a.x) < (s.terminal ? 0.01 : spacing - 0.01) && Math.max(Math.min(a.y,b.y),Math.min(s.a.y,s.b.y)) < Math.min(Math.max(a.y,b.y),Math.max(s.a.y,s.b.y))));
+  const overlapsTerminal = (a: Point, b: Point) => occupied.some(s => !sharedEndpoint(s) && a.y === b.y && s.a.y === s.b.y && Math.abs(a.y - s.a.y) < .01 && Math.max(Math.min(a.x,b.x),Math.min(s.a.x,s.b.x)) < Math.min(Math.max(a.x,b.x),Math.max(s.a.x,s.b.x)));
   if (overlapsTerminal(source, start) || overlapsTerminal(end, target)) return null;
   const costs = new Map([[initial, 0]]), previous = new Map<string, string>();
   const blockedSegments = new Map<string, boolean>();

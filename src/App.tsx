@@ -63,6 +63,7 @@ import {
 import { addIndex, setAttachedNote, setVisualColor, setTableRecords, findTableRange } from "./dbml-edit";
 import {
   relationshipPorts,
+  relationshipSides,
   relationshipFlow,
   type RelationshipPort,
   highlightedRelationships,
@@ -179,20 +180,20 @@ function TableNode({ id, data, selected }: NodeProps) {
         <button type="button" aria-label="Table records" title="Table records" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.openRecords as () => void)(); }}><Grid2X2 size={14}/></button>
         <AppearanceSettings label="Table header color" color={t.color || '#316896'} onApply={data.applyColor as (color: string) => Promise<void>} />
       </div>}
-      {data.detail==="names"&&<><Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/></>}
+      {data.detail==="names"&&<><Handle type="target" position={Position.Left} id="header-in"/><Handle type="source" position={Position.Right} id="header-out"/><Handle type="source" position={Position.Left} id="header-out-left"/><Handle type="target" position={Position.Right} id="header-in-right"/></>}
     </div>
     {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
       const pk=primaryKeys.has(f.name),targets=foreignKeys[f.name] || [];
       const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{f.note&&<><strong>Note</strong><p>{f.note}</p></>}</>;
       return <SchemaTooltip key={f.name} heading={<><Table2 size={14}/><b>{f.name}</b><code>{f.type}</code></>} content={info}>
-        <div className={"field "+(pk?"primary-field ":"")+(((data.highlightFields as string[])||[]).includes(f.name)?"field-highlight":"")}>
+        <div onPointerEnter={() => (data.onFieldHover as (field: string | null) => void)(f.name)} onPointerLeave={() => (data.onFieldHover as (field: string | null) => void)(null)} className={"field "+(pk?"primary-field ":"")+(((data.highlightFields as string[])||[]).includes(f.name)?"field-highlight":"")}>
           <Handle type="target" position={Position.Left} id={f.name+"-in"}/>
           <span className="field-name">{f.name}</span>
           {pk&&<span className="attribute-icon" title="Primary key" aria-label="Primary key"><KeyRound size={12}/></span>}
           {targets.length>0&&<span className="attribute-icon" title={"Foreign key: "+targets.join(", ")} aria-label="Foreign key"><Link2 size={12}/></span>}
           {f.note&&<span className="attribute-icon note-indicator" aria-label={"Note on "+f.name}><MessageSquare size={12}/></span>}
           <span className="field-type">{f.type}</span>{f.not_null&&<span className="not-null-tag" aria-label="Not null">NN</span>}
-          <Handle type="source" position={Position.Right} id={f.name+"-out"}/>
+          <Handle type="source" position={Position.Right} id={f.name+"-out"}/><Handle type="source" position={Position.Left} id={f.name+"-out-left"}/><Handle type="target" position={Position.Right} id={f.name+"-in-right"}/>
         </div>
       </SchemaTooltip>;
     })}
@@ -220,7 +221,7 @@ function GroupNode({ data }: NodeProps) {
   );
 }
 const nodeTypes = {
-  table: memo(TableNode, (a, b) => a.id === b.id && a.data === b.data && a.selected === b.selected),
+  table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
   group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.focused === b.data.focused),
 };
 function ZoomPercentage() { return <>{Math.round(useViewport().zoom * 100)}%</>; }
@@ -255,9 +256,9 @@ function RelationshipEdge(props: EdgeProps) {
         interactionWidth={10}
       />
       {[
-        { x: props.sourceX, y: sourceY, direction: 1, cardinality: parts[0], port: ports?.source },
-        { x: props.targetX, y: targetY, direction: -1, cardinality: parts[1], port: ports?.target },
-      ].map(({ x, y, direction, cardinality, port }, index) => (
+        { x: props.sourceX, y: sourceY, direction: props.sourcePosition === Position.Left ? -1 : 1, cardinality: parts[0], port: ports?.source },
+        { x: props.targetX, y: targetY, direction: props.targetPosition === Position.Right ? 1 : -1, cardinality: parts[1], port: ports?.target },
+      ].map(({ x, y, direction, cardinality, port }, index) => (port?.showSymbol || hovered) && (
         <path
           key={index}
           className="edge-cardinality"
@@ -320,6 +321,7 @@ function Workspace() {
   const [arrangement, setArrangement] = useState<Arrangement>("left-right");
   const [selectedEdge, setSelectedEdge] = useState("");
   const [focusedGroup, setFocusedGroup] = useState("");
+  const [hoveredField, setHoveredField] = useState<{ tableId: string; field: string } | null>(null);
   const [edgeAccessPoint, setEdgeAccessPoint] = useState<{x:number;y:number}>();
   const [recordFocus, setRecordFocus] = useState<RecordFocus>();
   const [recordHistory, setRecordHistory] = useState<{tableId: string; focus?: RecordFocus}[]>([]);
@@ -472,7 +474,7 @@ function Workspace() {
       setError("");
       setSelected("");
       setSelectedEdge("");
-      setFocusedGroup("");
+      setFocusedGroup(""); setHoveredField(null);
     } catch (e) {
       if (run !== loadRun.current) return;
       setError((e as Error).message);
@@ -723,9 +725,15 @@ function Workspace() {
   }, [doc, code]);
   useEffect(() => {
     if (!doc) return;
+    let active = true, running = false;
     const t = setInterval(async () => {
+      if (running) return;
+      running = true;
       try {
-        const d = await api("/schemas/" + doc.id);
+        const metadata = doc.storage === "cloud" ? (await api("/schemas")).find((item: Doc) => item.id === doc.id) : await api("/schemas/" + doc.id);
+        if (!active) return;
+        if (!metadata) throw new Error("This diagram is no longer available.");
+        const d = metadata;
         if (d.bundle_id !== doc.bundle_id || d.name !== doc.name) {
           setDoc((previous) =>
             previous
@@ -745,6 +753,8 @@ function Workspace() {
                   : "Schema changed on disk. Export your edits, then Revert to load the agent version.",
             );
           } else {
+            const d = doc.storage === "cloud" ? await api("/schemas/" + doc.id) : metadata;
+            if (!active) return;
             saved.current = d.dbml;
             latestCode.current = d.dbml;
             fitPending.current = true;
@@ -762,11 +772,11 @@ function Workspace() {
           }
         }
       } catch (e) {
-        setError((e as Error).message);
-      }
+        if (active) setError((e as Error).message);
+      } finally { running = false; }
     }, 2000);
-    return () => clearInterval(t);
-  }, [doc?.id, doc?.revision]);
+    return () => { active = false; clearInterval(t); };
+  }, [doc?.id, doc?.revision, doc?.name, doc?.bundle_id, doc?.storage]);
   const persistLayout = () => {
     if (!doc) return;
     clearTimeout(layoutTimer.current);
@@ -917,12 +927,16 @@ function Workspace() {
     if(!table){setError("Create a table before attaching a note.");return;}
     setTableId(table.id);setNoteField("");setNoteText(table.note || "");setError("");setModal("note");
   };
+  useEffect(() => {
+    if (hoveredField && !model.tables.some(table => table.id === hoveredField.tableId && table.fields.some(field => field.name === hoveredField.field))) setHoveredField(null);
+  }, [model, hoveredField]);
   const highlightedRefs = useMemo(() => highlightedRelationships(
     model.refs,
     highlight,
     selected,
     selectedEdge,
-  ), [model.refs, highlight, selected, selectedEdge]);
+    hoveredField,
+  ), [model.refs, highlight, selected, selectedEdge, hoveredField]);
   const tableData = useMemo(() => new Map(nodes.filter(n => n.type === "table").map((n) => {
     const t = n.data.table as Table;
     const keys = [
@@ -947,6 +961,7 @@ function Workspace() {
         detail,
         keys,
         foreignKeys:foreignKeyTargets(model.refs,t.id),
+        onFieldHover: (field: string | null) => setHoveredField(current => field ? { tableId: t.id, field } : current?.tableId === t.id ? null : current),
         openRecords: () => { setTableId(t.id); setRecordFocus(undefined); setRecordHistory([]); setModal('records'); },
         applyColor: (color: string) => applyVisualColor('table', t.id, color),
         highlightFields: model.refs
@@ -1005,21 +1020,29 @@ function Workspace() {
     width: n.measured?.width || 260,
     height: n.measured?.height || (detail === "names" ? 33 : 33 + visibleFields((n.data.table as Table).fields, detail, (n.data.keys as string[]) || []).length * 30 + ((n.data.table as Table).indexes.length ? 25 : 0)),
   })), [nodes, detail, tableData]);
-  const ports = useMemo(() => relationshipPorts(model.refs, detail), [model.refs, detail]);
+  const attachments = useMemo(() => Object.fromEntries(model.refs.map(ref => {
+    const from = nodes.find(node => node.id === ref.fromTable), to = nodes.find(node => node.id === ref.toTable);
+    return [ref.id, from && to ? relationshipSides({ x: from.position.x, width: from.measured?.width || 260 }, { x: to.position.x, width: to.measured?.width || 260 }, from.id === to.id) : { sourceSide: "right" as const, targetSide: "left" as const }];
+  })), [nodes, model.refs]);
+  const attachmentKey = JSON.stringify(attachments);
+  const ports = useMemo(() => relationshipPorts(model.refs.map(ref => ({ ...ref, ...attachments[ref.id] })), detail, selectedEdge, highlightedRefs), [model.refs, detail, selectedEdge, highlightedRefs, attachmentKey]);
+  const sourceHandle = (refId: string, field: string) => (detail === "names" ? "header" : field) + (attachments[refId].sourceSide === "left" ? "-out-left" : "-out");
+  const targetHandle = (refId: string, field: string) => (detail === "names" ? "header" : field) + (attachments[refId].targetSide === "right" ? "-in-right" : "-in");
   const routingRequests = model.refs.flatMap(ref => {
     const from = displayedNodes.find(n => n.id === ref.fromTable), to = displayedNodes.find(n => n.id === ref.toTable);
     if (!from || !to) return [];
     const endpoint = (node: Node, field: string, source: boolean) => {
-      const handleId = detail === "names" ? source ? "header-out" : "header-in" : field + (source ? "-out" : "-in");
+      const side = source ? attachments[ref.id].sourceSide : attachments[ref.id].targetSide;
+      const handleId = source ? sourceHandle(ref.id, field) : targetHandle(ref.id, field);
       const handle = flow.getInternalNode(node.id)?.internals.handleBounds?.[source ? "source" : "target"]?.find(handle => handle.id === handleId);
       const fields = visibleFields((node.data.table as Table).fields, detail, (node.data.keys as string[]) || []);
-      return { x: node.position.x + (handle ? handle.x + handle.width / 2 : source ? node.measured?.width || 260 : 0),
+      return { x: node.position.x + (handle ? handle.x + handle.width / 2 : side === "right" ? node.measured?.width || 260 : 0),
         y: node.position.y + (handle ? handle.y + handle.height / 2 : detail === "names" ? 16.5 : 49 + Math.max(0, fields.findIndex(f => f.name === field)) * 30) };
     };
     const source = endpoint(from, ref.fromFields[0], true), target = endpoint(to, ref.toFields[0], false);
     source.y += ports[ref.id].source.offset;
     target.y += ports[ref.id].target.offset;
-    return [{ id: ref.id, source, target }];
+    return [{ id: ref.id, source, target, ...attachments[ref.id] }];
   });
   const routingKey = JSON.stringify({ routingRequests, obstacles });
   const draggingKey = nodes.filter(node => node.dragging).map(node => node.id).sort().join("|");
@@ -1033,17 +1056,16 @@ function Workspace() {
       id: r.id,
       source: r.fromTable,
       target: r.toTable,
-      sourceHandle:
-        detail === "names" ? "header-out" : r.fromFields[0] + "-out",
-      targetHandle: detail === "names" ? "header-in" : r.toFields[0] + "-in",
+      sourceHandle: sourceHandle(r.id, r.fromFields[0]),
+      targetHandle: targetHandle(r.id, r.toFields[0]),
       type: "relationship",
       ariaLabel: `Relationship ${r.name || r.fromTable + " to " + r.toTable}`,
-      selected: active || (!!selected && (r.fromTable===selected || r.toTable===selected)),
+      selected: active || (!hoveredField && !!selected && (r.fromTable===selected || r.toTable===selected)),
       animated: false,
       interactionWidth: 10,
       data: {
         ports: ports[r.id],
-        route: relationshipRoutes[r.id],
+        route: routing.sides?.[r.id] === `${attachments[r.id].sourceSide}:${attachments[r.id].targetSide}` ? relationshipRoutes[r.id] : undefined,
         routeBounds: routing.tables,
         dragging: movingTables.has(r.fromTable) || movingTables.has(r.toTable),
         color: r.color,
@@ -1063,7 +1085,7 @@ function Workspace() {
         opacity: 1,
       },
     };
-  }), [model.refs, ports, relationshipRoutes, routing.tables, selectedEdge, highlightedRefs, selected, edgeAccessPoint, movingTables]);
+  }), [model.refs, ports, relationshipRoutes, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables]);
   const applyVisualColor = async (kind: 'table' | 'relationship' | 'group', id: string, color: string) => {
     const previous = latestCode.current;
     const next = await setVisualColor(previous, kind, id, color);
@@ -1137,6 +1159,7 @@ function Workspace() {
   return (
     <div className="app">
       <header>
+        <nav className="workspace-breadcrumb" aria-label="Workspace breadcrumb">
         <div className="brand">
           <span className="logo">
             <img src="/favicon.svg" alt="" width="28" height="28" />
@@ -1172,6 +1195,7 @@ function Workspace() {
             setModal("move");
           }}
         />
+        </nav>
         <button
           className="new"
           onClick={() => {
@@ -1470,8 +1494,8 @@ function Workspace() {
             onConnect={(connection) => {
               const from = model.tables.find((t) => t.id === connection.source),
                 to = model.tables.find((t) => t.id === connection.target);
-              const sourceField = connection.sourceHandle?.replace(/-out$/, ""),
-                targetField = connection.targetHandle?.replace(/-in$/, "");
+              const sourceField = connection.sourceHandle?.replace(/-out(?:-left)?$/, ""),
+                targetField = connection.targetHandle?.replace(/-in(?:-right)?$/, "");
               if (
                 !from ||
                 !to ||
@@ -1736,6 +1760,11 @@ function Workspace() {
                         name: "Pipeline",
                         description:
                           "Order table groups by dependencies, with tables stacked inside each stage.",
+                      },
+                      {
+                        id: "groups",
+                        name: "By groups",
+                        description: "Pack each group into a separate block with clear boundaries.",
                       },
                       {
                         id: "snowflake",

@@ -15,17 +15,20 @@ export function matchesSearch(value: string, query: string) {
 }
 
 export function highlightedRelationships(
-  refs: { id: string; fromTable: string; toTable: string }[],
+  refs: { id: string; fromTable: string; toTable: string; fromFields?: string[]; toFields?: string[] }[],
   enabled: boolean,
   selectedTable: string,
   selectedEdge: string,
+  hoveredField?: { tableId: string; field: string } | null,
 ) {
   return new Set(
     refs
       .filter(
         (ref) =>
           ref.id === selectedEdge ||
-          ((enabled || !!selectedTable) &&
+          (hoveredField
+            ? (ref.fromTable === hoveredField.tableId && !!ref.fromFields?.includes(hoveredField.field)) || (ref.toTable === hoveredField.tableId && !!ref.toFields?.includes(hoveredField.field))
+            : (enabled || !!selectedTable) &&
             (!selectedTable ||
               ref.fromTable === selectedTable ||
               ref.toTable === selectedTable)),
@@ -47,28 +50,40 @@ export function foreignKeyTargets(
  return targets;
 }
 
-export type RelationshipPort = { offset: number; halfHeight: number; width: number };
-export function relationshipPorts(refs: { id: string; fromTable: string; toTable: string; fromFields: string[]; toFields: string[] }[], detail: Detail) {
-  const groups = new Map<string, { id: string; side: "source" | "target" }[]>();
+export type RelationshipPort = { offset: number; halfHeight: number; width: number; showSymbol: boolean };
+export function relationshipPorts(refs: { id: string; relation: string; sourceSide?: string; targetSide?: string; fromTable: string; toTable: string; fromFields: string[]; toFields: string[] }[], detail: Detail, selectedEdge = "", highlighted?: ReadonlySet<string>) {
+  const groups = new Map<string, Map<string, { id: string; side: "source" | "target" }[]>>();
   const ports: Record<string, { source: RelationshipPort; target: RelationshipPort }> = {};
   for (const ref of refs) {
-    ports[ref.id] = { source: { offset: 0, halfHeight: 4, width: 10 }, target: { offset: 0, halfHeight: 4, width: 10 } };
+    ports[ref.id] = { source: { offset: 0, halfHeight: 4, width: 10, showSymbol: false }, target: { offset: 0, halfHeight: 4, width: 10, showSymbol: false } };
     for (const side of ["source", "target"] as const) {
-      const key = JSON.stringify([side, side === "source" ? ref.fromTable : ref.toTable, detail === "names" ? "header" : (side === "source" ? ref.fromFields[0] : ref.toFields[0])]);
-      const group = groups.get(key) || [];
-      group.push({ id: ref.id, side });
-      groups.set(key, group);
+      const key = JSON.stringify([side === "source" ? ref.sourceSide || side : ref.targetSide || side, side === "source" ? ref.fromTable : ref.toTable, detail === "names" ? "header" : (side === "source" ? ref.fromFields[0] : ref.toFields[0])]);
+      const types = groups.get(key) || new Map();
+      const cardinality = ref.relation.split(":")[side === "source" ? 0 : 1];
+      const connections = types.get(cardinality) || [];
+      connections.push({ id: ref.id, side });
+      types.set(cardinality, connections);
+      groups.set(key, types);
     }
   }
-  for (const group of groups.values()) {
-    if (group.length < 2) continue;
-    const spacing = 18 / (group.length - 1);
-    group.forEach(({ id, side }, index) => {
-      ports[id][side] = { offset: -9 + spacing * index, halfHeight: Math.min(3, spacing * .4), width: 8 };
+  for (const types of groups.values()) {
+    [...types.values()].forEach((connections, index) => {
+      const owner = connections.find(ref => ref.id === selectedEdge) || connections.find(ref => highlighted?.has(ref.id)) || connections[0];
+      for (const { id, side } of connections) ports[id][side] = {
+        offset: types.size > 1 ? -7 + index * 14 : 0,
+        halfHeight: types.size > 1 ? 3 : 4, width: types.size > 1 ? 8 : 10,
+        showSymbol: id === owner.id,
+      };
     });
   }
   return ports;
 }
 export function relationshipFlow(relation: string) {
   return relation === "1:*" ? "forward" : relation === "*:1" ? "reverse" : "both";
+}
+
+export function relationshipSides(from: { x: number; width: number }, to: { x: number; width: number }, self = false): { sourceSide: "left" | "right"; targetSide: "left" | "right" } {
+  if (self || from.x + from.width <= to.x) return { sourceSide: "right", targetSide: "left" };
+  if (to.x + to.width <= from.x) return { sourceSide: "left", targetSide: "right" };
+  return { sourceSide: "right", targetSide: "right" };
 }

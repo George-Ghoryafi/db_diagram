@@ -40,7 +40,7 @@ export function createHostedApp(store: () => HostedStore) {
     }
     next();
   });
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "100mb" }));
   app.all("/api/mcp", async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "Use MCP Streamable HTTP POST requests." });

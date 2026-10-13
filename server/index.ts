@@ -34,7 +34,7 @@ export function createApp(store = new SchemaStore()) {
     }
     next();
   });
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "100mb" }));
   app.get("/api/bundles", (_req, res) => res.json(store.listBundles()));
   app.post("/api/bundles", async (req, res) =>
     res

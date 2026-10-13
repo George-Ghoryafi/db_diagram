@@ -55,12 +55,14 @@ export function DiagramPicker(props: Props) {
         aria-haspopup="dialog"
         popoverTarget="diagram-picker"
       >
-        <span className="bundle-avatar" style={{ background: bundle?.color }}>
-          {bundle?.name.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="picker-breadcrumb">
+        <span className="breadcrumb-bundle" title={bundle?.name}>
+          <i style={{ background: bundle?.color }} />
           <span>{bundle?.name || "Shared diagrams"}</span>
-          <b>{props.loading ? "Loading diagram…" : selected?.name || "Choose a diagram"}</b>
+        </span>
+        <span className="breadcrumb-divider" aria-hidden="true">/</span>
+        <span className="breadcrumb-diagram" title={selected?.name}>
+          <Table2 size={13} aria-hidden="true" />
+          <span>{props.loading ? "Loading diagram…" : selected?.name || "Choose a diagram"}</span>
         </span>
         <ChevronDown size={14} />
       </button>

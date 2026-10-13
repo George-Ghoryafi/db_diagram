@@ -76,3 +76,21 @@ test('selected relationship labels sit on the segment nearest the click', async 
   assert.deepEqual(projectToRoute(route,{x:104,y:70}),{x:100,y:70});
   assert.deepEqual(projectToRoute(route,{x:25,y:-8}),{x:25,y:0});
 });
+
+test('references attach to facing sides or the same side for vertically stacked tables', async () => {
+  const { routeRelationships }=await import('../src/edge-routing');
+  const { relationshipSides }=await import('../src/canvas');
+  assert.deepEqual(relationshipSides({x:400,width:100},{x:0,width:100}),{sourceSide:'left',targetSide:'right'});
+  assert.deepEqual(relationshipSides({x:0,width:100},{x:400,width:100}),{sourceSide:'right',targetSide:'left'});
+  assert.deepEqual(relationshipSides({x:0,width:100},{x:0,width:100}),{sourceSide:'right',targetSide:'right'});
+  assert.deepEqual(relationshipSides({x:0,width:100},{x:0,width:100},true),{sourceSide:'right',targetSide:'left'});
+  const tables=[{x:0,y:0,width:100,height:100},{x:400,y:0,width:100,height:100},{x:0,y:250,width:100,height:100}];
+  const requests=[
+    {id:'back',source:{x:400,y:50},target:{x:100,y:50},sourceSide:'left' as const,targetSide:'right' as const},
+    {id:'stacked',source:{x:100,y:70},target:{x:100,y:300},sourceSide:'right' as const,targetSide:'right' as const},
+  ];
+  const routes=routeRelationships(requests,tables);
+  for(const request of requests){const route=routes[request.id];assert.ok(route);assert.deepEqual(route[0],request.source);assert.deepEqual(route.at(-1),request.target);for(let i=1;i<route.length;i++)assert.ok(!tables.some(t=>crossesTable(route[i-1],route[i],t)));}
+  assert.ok(routes.back![1].x<requests[0].source.x);
+  assert.ok(routes.stacked!.at(-2)!.x>requests[1].target.x);
+});
