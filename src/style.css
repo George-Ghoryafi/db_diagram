@@ -1568,7 +1568,7 @@ button:disabled {
 .field-type { font: 11px "SFMono-Regular", Consolas, monospace; color: #626b76; max-width: 104px; white-space: nowrap; }
 .primary-field .field-name, .primary-field .field-type { font-weight: 650; }
 .not-null-tag { font-size: 9px; line-height: 15px; padding: 0 3px; border-radius: 2px; background: #e8e9eb; color: #646b73; flex-shrink: 0; }
-.schema-tooltip { position: fixed; width: 290px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); z-index: 40; border: 1px solid #e0e5eb; border-radius: 7px; box-shadow: 0 4px 18px #1e2d4318; background: #fff; color: #3d485a; font-size: 12px; pointer-events: none; overflow: auto; }
+.schema-tooltip { position: fixed; width: 290px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); z-index: 40; border: 1px solid #e0e5eb; border-radius: 7px; box-shadow: 0 4px 18px #1e2d4318; background: #fff; color: #3d485a; font-size: 12px; pointer-events: auto; overflow: auto; }
 .schema-tooltip-heading { display: flex; align-items: center; gap: 7px; padding: 11px 13px; background: #f7f9fb; border-bottom: 1px solid #e5e9ee; }
 .schema-tooltip-heading b { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .schema-tooltip-heading code { font: 11px "SFMono-Regular", Consolas, monospace; color: #b95b36; overflow-wrap: anywhere; }
@@ -1883,3 +1883,47 @@ button:disabled {
 @media(prefers-reduced-motion:reduce) { .legend-motion-dot { animation: none; } }
 .legend-bucket-access { display: flex; align-items: center; gap: 5px; }
 .canvas-top:has(.canvas-legend-menu) { z-index: 20; }
+
+/* Notes share Markdown styling in hover previews and the expanded window. */
+.note-open { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; min-width: 16px; height: 18px; border: 0; background: transparent; color: #59626d; border-radius: 3px; cursor: pointer; }
+.note-open:hover { background: #759cbd20; }
+.note-open:focus-visible, .note-expand:focus-visible { outline: 2px solid #6288e8; outline-offset: 2px; }
+.note-preview { cursor: zoom-in; }
+.note-preview .note-markdown { max-height: 240px; overflow: auto; }
+.note-expand { display: inline-flex; gap: 5px; align-items: center; margin-top: 10px; padding: 3px 0; border: 0; background: none; color: #416b9e; font-size: 11px; cursor: pointer; }
+.note-markdown { color: #334155; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.note-markdown > :first-child { margin-top: 0; }
+.note-markdown > :last-child { margin-bottom: 0; }
+.note-markdown p { margin: 0 0 12px; white-space: normal; }
+.note-markdown h1, .note-markdown h2, .note-markdown h3, .note-markdown h4, .note-markdown h5, .note-markdown h6 { margin: 20px 0 8px; color: #1e293b; line-height: 1.3; }
+.note-markdown h1 { font-size: 24px; } .note-markdown h2 { font-size: 20px; } .note-markdown h3 { font-size: 16px; }
+.note-markdown strong { display: inline; margin: 0; font-size: inherit; font-weight: 650; }
+.note-markdown ul, .note-markdown ol { margin: 8px 0 14px; padding-left: 24px; }
+.note-markdown li { margin: 4px 0; }
+.note-markdown li > p { margin-bottom: 4px; }
+.note-markdown a { color: #326cb5; text-decoration: underline; text-underline-offset: 2px; }
+.note-markdown blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid #92acd0; background: #f1f5fb; color: #53647b; }
+.note-markdown blockquote p:last-child { margin-bottom: 0; }
+.note-markdown code { padding: 2px 5px; border-radius: 4px; background: #edf1f6; font: 0.9em/1.5 "SFMono-Regular", Consolas, monospace; color: #475569; }
+.note-markdown pre { margin: 12px 0; padding: 14px; border: 1px solid #dfe6ee; border-radius: 7px; background: #f6f8fb; overflow: auto; white-space: pre; }
+.note-markdown pre code { padding: 0; background: none; }
+.note-markdown table { display: block; width: max-content; max-width: 100%; overflow: auto; margin: 12px 0; border-collapse: collapse; font-size: inherit; }
+.note-markdown th, .note-markdown td { padding: 7px 12px; border: 1px solid #dfe6ee; text-align: left; }
+.note-markdown th { background: #f2f5f9; font-weight: 600; }
+.note-markdown img { max-width: 100%; height: auto; border-radius: 5px; }
+.note-markdown hr { margin: 18px 0; border: 0; border-top: 1px solid #dfe6ee; }
+.note-window { position: fixed; inset: auto; margin: 0; padding: 0; width: min(720px, calc(100vw - 32px)); height: min(520px, calc(100dvh - 32px)); min-width: min(340px, calc(100vw - 32px)); min-height: 240px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); resize: both; overflow: hidden; border: 1px solid #d6dfe9; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px #17283d38, 0 4px 16px #17283d12; color: #334155; }
+.note-window[open] { display: flex; flex-direction: column; }
+.note-window::backdrop { background: #16233820; }
+.note-window-heading { display: flex; align-items: center; gap: 12px; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid #e4eaf1; background: #f8fafc; cursor: grab; touch-action: none; user-select: none; }
+.note-window-heading:active { cursor: grabbing; }
+.note-window-heading > div { flex: 1; min-width: 0; }
+.note-window-heading span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #758399; }
+.note-window-heading h2 { margin: 3px 0 0; font-size: 15px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-drag-hint { color: #a3afbf; }
+.note-window-heading button { padding: 5px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #758399; border-radius: 5px; cursor: pointer; }
+.note-window-heading button:hover { background: #e8edf4; color: #334155; }
+.note-window-body { flex: 1; min-height: 0; padding: 24px; overflow: auto; overscroll-behavior: contain; }
+.note-window-footer { flex-shrink: 0; padding: 9px 24px; border-top: 1px solid #edf1f6; color: #8794a7; font-size: 10px; background: #fbfcfe; pointer-events: none; }
+.note-markdown .contains-task-list { list-style: none; padding-left: 0; }
+.note-markdown .task-list-item input { margin-right: 6px; vertical-align: middle; }

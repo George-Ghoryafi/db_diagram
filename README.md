@@ -161,3 +161,5 @@ MCP `read_schema` includes `layout` and `layout_revision`. Both `arrange_diagram
 - Both tools accept `dry_run: true` for a preview and return bounds and `previous_layout`. Previewing does not save.
 
 Example request: “Arrange this diagram left to right following ingestion → document processing → publication → vector search. Read the current revisions, preview with explicit flow links, then save the layout. Preserve all DBML.” The agent must infer the intended application flow from your description; foreign keys alone do not describe it reliably. Refresh the agent's MCP connection to discover the new tools.
+
+Notes on SQL tables, attributes, groups, stores and storage items render Markdown, including headings, lists, links, fenced code blocks, task lists and tables. Click the note icon or **Expand note** in its hover preview to open a larger viewer. Drag its header to move it, resize from the bottom-right corner, and press Escape to close. Notes remain plain Markdown text in DBML/storage metadata; raw HTML is not executed.

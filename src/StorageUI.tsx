@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { Archive, Braces, KeyRound, LockKeyhole, Globe, Plus, Pencil, Link2, Trash2, X, ArrowRight, Info, Grid2X2, Waypoints } from 'lucide-react';
 import { SchemaTooltip } from './SchemaTooltip';
+import { NoteView } from './NoteView';
 import { shapeFields, storageKinds, storageNodeId, storagePorts, storageLinkIssue, type StorageUnit, type StorageItem, type StorageModel, type StorageLink, type StorageTable } from './storage-model';
 
 export function StorageIcon({ kind, size = 16 }: { kind: StorageUnit['kind']; size?: number }) {
@@ -25,14 +26,14 @@ export function StorageNode({ id, data, selected }: NodeProps) {
     <div className="storage-node-kind">{kind.label}</div>
     {data.detail !== 'names' && unit.items.map(item => <div key={item.id}>
       <SchemaTooltip disabled={!!data.disableHover} heading={<><StorageIcon kind={unit.kind} /><b>{item.name}</b></>} content={<>
-        <strong>{kind.item}</strong>{item.note && <p>{item.note}</p>}
+        <strong>{kind.item}</strong>{item.note && <NoteView text={item.note} title={unit.name+" / "+item.name} disabled={!!data.disableHover}/>}
         {unit.kind === 'blob' && <p>{item.access === 'private' ? 'Private bucket' : 'Public bucket'}{item.contentType && ' · ' + item.contentType}</p>}
         {item.keyPattern && <><strong>Key pattern</strong><code>{item.keyPattern}</code></>}
         {item.ttl && <p>TTL: {item.ttl}</p>}
         {item.shape && <><strong>Document / value shape</strong><pre>{item.shape}</pre></>}
       </>}>
         <div className="storage-item-row" onPointerEnter={() => (data.onPortHover as (port: string | null) => void)(item.id)} onPointerLeave={() => (data.onPortHover as (port: string | null) => void)(null)}>
-          <StorageHandles port={item.id} /><StorageIcon kind={unit.kind} size={13} /><b>{item.name}</b>
+          <StorageHandles port={item.id} /><StorageIcon kind={unit.kind} size={13} /><b>{item.name}</b>{item.note && <NoteView text={item.note} title={unit.name+" / "+item.name} disabled={!!data.disableHover} icon={<Info size={12}/>}/>}
           {unit.kind === 'blob' ? <span className="storage-access" title={item.access + ' bucket'}>{item.access === 'private' ? <LockKeyhole size={11} /> : <Globe size={11} />}{item.access}</span> : <code>{unit.kind === 'document' ? 'document' : unit.kind === 'vector' ? `${item.dimensions || '?'}D · ${item.metric || 'cosine'}` : 'key → value'}</code>}
           <button className="storage-item-records nodrag nopan" aria-label={'Sample records for ' + item.name} title={`${(item.records || []).length} sample records`} onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); (data.onRecords as (item?: string) => void)(item.id); }}><Grid2X2 size={12} /></button>
         </div>
@@ -42,7 +43,7 @@ export function StorageNode({ id, data, selected }: NodeProps) {
         <StorageHandles port={item.id + '/' + field.path} /><span title={field.path}>{field.name}</span><code>{field.type}</code>
       </div>)}
     </div>)}
-    <div className="storage-node-footer"><span>{unit.items.length} {unit.items.length === 1 ? kind.item.toLowerCase() : kind.plural}</span>{unit.note && <SchemaTooltip disabled={!!data.disableHover} heading={<b>{unit.name}</b>} content={<p>{unit.note}</p>}><Info size={12} /></SchemaTooltip>}</div>
+    <div className="storage-node-footer"><span>{unit.items.length} {unit.items.length === 1 ? kind.item.toLowerCase() : kind.plural}</span>{unit.note && <SchemaTooltip disabled={!!data.disableHover} heading={<b>{unit.name}</b>} content={<NoteView text={unit.note} title={unit.name} disabled={!!data.disableHover}/>}><NoteView text={unit.note} title={unit.name} disabled={!!data.disableHover} icon={<Info size={12}/>}/></SchemaTooltip>}</div>
   </div>;
 }
 

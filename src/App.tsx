@@ -84,6 +84,7 @@ import { exampleDocument, exampleLayoutForCanvas } from "./example";
 import { dbmlLanguage, dbmlColors } from "./dbml-language";
 import { defaultBundle, bundleColors, type Bundle } from "./bundles";
 import { SchemaTooltip } from "./SchemaTooltip";
+import { NoteView, NoteProvider } from "./NoteView";
 import { DiagramPicker } from "./DiagramPicker";
 import { StorageRecords } from './StorageRecords';
 import { StorageNode, StoragePanel, StorageEditor, StorageLinkEditor } from './StorageUI';
@@ -196,7 +197,7 @@ function TableNode({ id, data, selected }: NodeProps) {
   return <div className={"table-node "+(selected?"selected":"")}>
     <div className="table-title" style={{background:t.color || "#316896"}}>
       <b>{t.schema==="public"?"":t.schema+"."}{t.name}</b>
-      {t.note&&<SchemaTooltip disabled={!!data.disableHover} heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><p>{t.note}</p></>}><span className="note-indicator" aria-label={"Note on "+t.name}><MessageSquare size={13}/></span></SchemaTooltip>}
+      {t.note&&<SchemaTooltip disabled={!!data.disableHover} heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><NoteView text={t.note} title={t.id} disabled={!!data.disableHover}/></>}><NoteView text={t.note} title={t.id} disabled={!!data.disableHover} icon={<MessageSquare size={13}/>}/></SchemaTooltip>}
       {selected && <div className="table-access-icons nodrag nopan">
         <button type="button" aria-label="Table records" title="Table records" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.openRecords as () => void)(); }}><Grid2X2 size={14}/></button>
         <AppearanceSettings label="Table header color" color={t.color || '#316896'} onApply={data.applyColor as (color: string) => Promise<void>} />
@@ -205,14 +206,14 @@ function TableNode({ id, data, selected }: NodeProps) {
     </div>
     {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
       const pk=primaryKeys.has(f.name),targets=foreignKeys[f.name] || [];
-      const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{!!f.indexes?.length&&<div className="attribute-indexes"><strong>Indexes</strong>{f.indexes.map((index,i)=><div className="attribute-index" key={i}><div><ListFilter size={13}/><b>{index.name || (index.pk ? "Primary key index" : index.unique ? "Unique index" : "Index")}</b></div><small>{[index.pk ? "Primary key" : index.unique ? "Unique" : "Non-unique", index.type, index.columns.length>1 ? "Composite" : ""].filter(Boolean).join(" · ")}</small><code>{index.columns.map(column=>column.value).join(", ")}</code></div>)}</div>}{f.note&&<><strong>Note</strong><p>{f.note}</p></>}{!!f.checks?.length&&<div className="attribute-checks"><strong>Check constraints <span>{f.checks.length}</span></strong>{f.checks.map((rule,index)=><div className="check-rule" key={index}><div className="check-rule-summary"><ShieldCheck size={14}/><b>{rule.summary}</b></div>{rule.options&&<div className="check-values">{rule.options.map(value=><code key={value}>{value}</code>)}</div>}{rule.limits&&<div className="check-limits">{rule.limits.map(limit=><div key={limit.label}><span>{limit.label}</span><b>≤ {limit.maximum}</b></div>)}</div>}{rule.fields.length>1&&<small>Also applies to {rule.fields.filter(field=>field!==f.name).join(", ")}</small>}{rule.name&&<small className="check-rule-name">{rule.name}</small>}<pre className="check-expression">{rule.expression}</pre></div>)}{!f.not_null&&!pk&&<p className="check-null-hint">Nullable column; NULL handling depends on the expression.</p>}</div>}</>;
+      const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{!!f.indexes?.length&&<div className="attribute-indexes"><strong>Indexes</strong>{f.indexes.map((index,i)=><div className="attribute-index" key={i}><div><ListFilter size={13}/><b>{index.name || (index.pk ? "Primary key index" : index.unique ? "Unique index" : "Index")}</b></div><small>{[index.pk ? "Primary key" : index.unique ? "Unique" : "Non-unique", index.type, index.columns.length>1 ? "Composite" : ""].filter(Boolean).join(" · ")}</small><code>{index.columns.map(column=>column.value).join(", ")}</code></div>)}</div>}{f.note&&<><strong>Note</strong><NoteView text={f.note} title={t.id+"."+f.name} disabled={!!data.disableHover}/></>}{!!f.checks?.length&&<div className="attribute-checks"><strong>Check constraints <span>{f.checks.length}</span></strong>{f.checks.map((rule,index)=><div className="check-rule" key={index}><div className="check-rule-summary"><ShieldCheck size={14}/><b>{rule.summary}</b></div>{rule.options&&<div className="check-values">{rule.options.map(value=><code key={value}>{value}</code>)}</div>}{rule.limits&&<div className="check-limits">{rule.limits.map(limit=><div key={limit.label}><span>{limit.label}</span><b>≤ {limit.maximum}</b></div>)}</div>}{rule.fields.length>1&&<small>Also applies to {rule.fields.filter(field=>field!==f.name).join(", ")}</small>}{rule.name&&<small className="check-rule-name">{rule.name}</small>}<pre className="check-expression">{rule.expression}</pre></div>)}{!f.not_null&&!pk&&<p className="check-null-hint">Nullable column; NULL handling depends on the expression.</p>}</div>}</>;
       return <SchemaTooltip disabled={!!data.disableHover} key={f.name} heading={<><Table2 size={14}/><b>{f.name}</b><code>{f.type}</code></>} content={info}>
         <div onPointerEnter={() => (data.onFieldHover as (field: string | null) => void)(f.name)} onPointerLeave={() => (data.onFieldHover as (field: string | null) => void)(null)} className={"field "+(pk?"primary-field ":"")+(((data.highlightFields as string[])||[]).includes(f.name)?"field-highlight":"")}>
           <Handle type="target" position={Position.Left} id={f.name+"-in"}/>
           <span className="field-name">{f.name}</span>
           {pk&&<span className="attribute-icon" title="Primary key" aria-label="Primary key"><KeyRound size={12}/></span>}
           {targets.length>0&&<span className="attribute-icon" title={"Foreign key: "+targets.join(", ")} aria-label="Foreign key"><Link2 size={12}/></span>}
-          {f.note&&<span className="attribute-icon note-indicator" aria-label={"Note on "+f.name}><MessageSquare size={12}/></span>}
+          {f.note&&<NoteView text={f.note} title={t.id+"."+f.name} disabled={!!data.disableHover} icon={<MessageSquare size={12}/>}/>}
           {!!f.indexes?.length&&<span className="attribute-icon index-indicator" aria-label={`${f.indexes.length} indexes on ${f.name}`}><ListFilter size={12}/></span>}
           {!!f.checks?.length&&<span className="attribute-icon check-indicator" aria-label={`${f.checks.length} check constraints on ${f.name}`}><ShieldCheck size={12}/></span>}
           <span className="field-type">{f.type}</span>{f.not_null&&<span className="not-null-tag" aria-label="Not null">NN</span>}
@@ -244,6 +245,7 @@ function GroupNode({ data }: NodeProps) {
         onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.onFocus as () => void)(); }}>
         <Layers size={12} />{String(data.name)}
       </button>
+      {!!data.note && <SchemaTooltip disabled={!!data.disableHover} heading={<b>{String(data.name)}</b>} content={<NoteView text={String(data.note)} title={String(data.name)} disabled={!!data.disableHover}/>}><NoteView text={String(data.note)} title={String(data.name)} disabled={!!data.disableHover} icon={<MessageSquare size={12}/>}/></SchemaTooltip>}
       <AppearanceSettings label={`${String(data.name)} group color`} color={String(data.color)} onApply={data.applyColor as (color: string) => Promise<void>} />
       </div>
     </div>
@@ -252,7 +254,7 @@ function GroupNode({ data }: NodeProps) {
 const nodeTypes = {
   storage: memo(StorageNode),
   table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && a.data.disableHover === b.data.disableHover && a.data.composites === b.data.composites && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
-  group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.focused === b.data.focused),
+  group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.note === b.data.note && a.data.disableHover === b.data.disableHover && a.data.focused === b.data.focused),
 };
 function ZoomPercentage() { return <>{Math.round(useViewport().zoom * 100)}%</>; }
 function RelationshipEdge(props: EdgeProps) {
@@ -1091,7 +1093,7 @@ function Workspace() {
         id: "group:" + g.name,
         type: "group",
         position: { x, y },
-        data: { name: g.name, color: g.color || "#537bad", applyColor: (color: string) => applyVisualColor('group', g.name, color), focused: focusedGroup === g.name, onFocus: () => {
+        data: { name: g.name, note: g.note, disableHover: canvasDragging, color: g.color || "#537bad", applyColor: (color: string) => applyVisualColor('group', g.name, color), focused: focusedGroup === g.name, onFocus: () => {
           setFocusedGroup(g.name); setSelected(""); setSelectedEdge("");
           const group = flow.getNode("group:" + g.name);
           if (group) void fitDiagram({ nodes: [group], duration: 400, padding: 0.12, maxZoom: 1.1 });
@@ -1106,7 +1108,7 @@ function Workspace() {
         zIndex: focusedGroup === g.name ? 1 : 0,
       },
     ];
-  }), [nodes, model.groups, detail, tableData, focusedGroup]);
+  }), [nodes, model.groups, detail, tableData, focusedGroup, canvasDragging]);
   const obstacles = useMemo(() => displayedNodes.map(n => ({
     ...n.position,
     width: n.measured?.width || 260,
@@ -2058,7 +2060,7 @@ function Workspace() {
               <>
                 <label>Table<select aria-label="Note table" value={tableId} onChange={e=>{setTableId(e.target.value);setNoteField("");setNoteText(model.tables.find(t=>t.id===e.target.value)?.note || "");}}>{model.tables.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
                 <label>Attach to<select aria-label="Note target" value={noteField} onChange={e=>{setNoteField(e.target.value);const table=model.tables.find(t=>t.id===tableId);setNoteText(e.target.value?table?.fields.find(f=>f.name===e.target.value)?.note || "":table?.note || "");}}><option value="">Table</option>{model.tables.find(t=>t.id===tableId)?.fields.map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select></label>
-                <label>Note text<textarea autoFocus rows={5} value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Explain this table or attribute…"/></label>
+                <label>Note text<textarea autoFocus rows={5} value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Explain this table or attribute… Markdown is supported."/></label>
                 {error&&<p className="error">{error}</p>}
                 <button className="primary" onClick={()=>void addNote()}>Apply note</button>
               </>
@@ -2270,8 +2272,8 @@ function Workspace() {
 }
 export default function App() {
   return (
-    <ReactFlowProvider>
+    <NoteProvider><ReactFlowProvider>
       <Workspace />
-    </ReactFlowProvider>
+    </ReactFlowProvider></NoteProvider>
   );
 }
