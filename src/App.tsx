@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { routeGeometry, storageLabelPosition, projectToRoute, type TableBounds, type Point as RoutePoint } from "./edge-routing";
 import { useRelationshipRoutes } from "./use-relationship-routes";
+import { CanvasLegend } from "./CanvasLegend";
 import { DiagramSkeleton } from "./DiagramSkeleton";
 import { AgentSetup } from "./AgentSetup";
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -1529,12 +1530,12 @@ function Workspace() {
                 relationships{!!storage.units.length && <> <i>·</i> {storage.units.length} stores</>}
               </span>
             </div>
-            <span className="private">
+            <div className="canvas-top-actions"><span className="private">
               <span className="dot" />{" "}
               {doc?.storage === "cloud"
                 ? "Shared workspace"
                 : "Only on this device"}
-            </span>
+            </span><CanvasLegend/></div>
           </div>
           <ReactFlow
             onInit={fitInitialDiagram}
