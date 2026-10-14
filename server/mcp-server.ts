@@ -5,6 +5,8 @@ import {
   type Bundle,
   type DiagramMetadata,
 } from "../src/bundles.js";
+import { arrangedLayout, positionedLayout, layoutBounds, layoutModel } from "./layout.js";
+import type { Layout, LayoutExpectation } from "./storage.js";
 import type { SchemaStore } from "./storage.js";
 import { storageModelSchema, writeStorageModel, storageLinkIssue, storageNodeId } from '../src/storage-model.js';
 import {
@@ -24,12 +26,14 @@ export type McpSchemaStore = {
     revision?: string,
     metadata?: DiagramMetadata,
   ): ReturnType<SchemaStore["write"]>;
+  saveLayout(id:string,layout:Layout,expected?:LayoutExpectation):ReturnType<SchemaStore["saveLayout"]>;
+  readLayout(id:string):Awaitable<{layout:Layout;layout_revision:string}>;
   listBundles(): Awaitable<Bundle[]>;
   createBundle(name: string, color: string): Promise<Bundle>;
   moveSchema(id: string, bundleId: string): ReturnType<SchemaStore["write"]>;
 };
 export function createSchemaMcp(store: McpSchemaStore) {
-  const server = new McpServer({ name: "schemaDB", version: "1.5.0" });
+  const server = new McpServer({ name: "schemaDB", version: "1.6.0" });
   function result(value: unknown) {
     return {
       content: [
@@ -55,6 +59,23 @@ export function createSchemaMcp(store: McpSchemaStore) {
       };
     }
   }
+  const pointSchema = z.object({x:z.number().finite().min(-10000000).max(10000000),y:z.number().finite().min(-10000000).max(10000000)}).strict();
+  const positionsSchema = z.record(z.string(),pointSchema).refine(value=>Object.keys(value).length<=10000,'Use at most 10,000 positions.');
+  async function layoutChange(id:string,revision:string,layout_revision:string,dry_run:boolean,compute:(dbml:string,layout:Layout)=>Layout|Promise<Layout>) {
+    const current=await store.read(id);
+    if(current.revision!==revision || current.layout_revision!==layout_revision)throw new SchemaError('Diagram or layout changed. Read_schema again before arranging.',409);
+    const layout=await compute(current.dbml,current.layout);
+    const document=dry_run?current:await store.saveLayout(id,layout,{revision,layout_revision});
+    return {id,layout,layout_revision:dry_run?current.layout_revision:document.layout_revision,revision:document.revision,dry_run,previous_layout:current.layout,bounds:layoutBounds(layoutModel(current.dbml).items,layout)};
+  }
+  server.registerTool('write_layout',{
+    description:'Position SQL tables, storage nodes and table groups without editing DBML. Read_schema first; supply revision and layout_revision. positions is a partial map of qualified table IDs or storage:<store-id> to {x,y}; other saved positions are preserved. Set replace=true to replace the entire layout (including restoring previous_layout); do not combine replace with group_positions. group_positions maps group names to the desired top-left of the visible group box; all member tables move together, preserving relative offsets. Explicit node positions override group movement. Groups require existing saved member positions; use arrange_diagram first for a new diagram. dry_run previews without saving. Returns previous_layout for undo; refresh revisions before restoring it. Open canvases pick up saved layout changes automatically.',
+    inputSchema:{id:z.string(),revision:z.string(),layout_revision:z.string(),positions:positionsSchema.default({}),group_positions:positionsSchema.default({}),dry_run:z.boolean().default(false),replace:z.boolean().default(false)}
+  },({id,revision,layout_revision,positions,group_positions,dry_run,replace})=>run(()=>layoutChange(id,revision,layout_revision,dry_run,(dbml,layout)=>positionedLayout(dbml,layout,positions,group_positions,replace))));
+  server.registerTool('arrange_diagram',{
+    description:'Automatically arrange all SQL tables and non-SQL stores without changing DBML. Read_schema first; supply revision and layout_revision. mode left-right places upstream systems on the left; pipeline orders table groups by dependencies; groups packs members into separate blocks; compact and snowflake are also available. For application data flow, supply flows [{from,to}] using qualified table IDs or storage:<store-id>; these are layout-only flow directions, replacing inferred FK/storage dependencies. Example: documents -> processing -> vector index. Do not infer application flow solely from FK direction. Omit flows for the normal dependency layout. dry_run previews positions and bounds. Saved layouts appear in open canvases; groups wrap their member tables.',
+    inputSchema:{id:z.string(),revision:z.string(),layout_revision:z.string(),mode:z.enum(['left-right','pipeline','groups','compact','snowflake']).default('left-right'),flows:z.array(z.object({from:z.string(),to:z.string()}).strict()).max(10000).optional(),dry_run:z.boolean().default(false)}
+  },({id,revision,layout_revision,mode,flows,dry_run})=>run(()=>layoutChange(id,revision,layout_revision,dry_run,(dbml,layout)=>arrangedLayout(dbml,mode,flows).then(next=>({...layout,...next})))));
   server.registerTool(
     "list_schemas",
     {
@@ -72,7 +93,7 @@ export function createSchemaMcp(store: McpSchemaStore) {
     "read_schema",
     {
       description:
-        "Read DBML, revision, saved layout, and normalized tables (including per-field checks, plain-language check summaries and indexes), relationships (including optional and bounded cardinalities), indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, vector databases with indexes, typed sample records, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML.",
+        "Read DBML, revision, layout_revision, saved layout, and normalized tables (including per-field checks, plain-language check summaries and indexes), relationships (including optional and bounded cardinalities), indexes, groups and model.storage (object/BLOB stores with buckets, document stores with collection shapes, key-value stores with keyspaces, vector databases with indexes, typed sample records, and cross-system links). Use write_storage to change storage definitions while preserving SQL DBML. Use arrange_diagram or write_layout to organize the canvas using the current revision and layout_revision.",
       inputSchema: { id: z.string() },
     },
     ({ id }) =>

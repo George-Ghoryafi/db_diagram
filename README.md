@@ -151,3 +151,13 @@ Select an SQL edge, then its cardinality button to choose optional or custom end
 Composite foreign keys render as explicit ordered tuple rows at both tables, following dbdiagram.io: one edge connects the complete keys, and the hover popout lists each column pairing. Shared tuples reuse one row. Keys-only mode retains tuples; table-name mode uses headers. Routing and layout use tuple handles rather than the first member's attribute.
 
 Relationships sharing an attribute, side and cardinality reuse a cable trunk and branch toward their destinations later. Other relationships retain separate lanes. Full obstacle routing and branch-label placement remain in the routing worker and pause during table dragging.
+
+## Agent-controlled canvas layout
+
+MCP `read_schema` includes `layout` and `layout_revision`. Both `arrange_diagram` and `write_layout` require the latest schema `revision` and `layout_revision`; stale writes are rejected. They change canvas positions only, preserving DBML and storage definitions. Open canvases pick up saved layout changes automatically when no local edit or drag is in progress.
+
+- `arrange_diagram`: `left-right`, `pipeline`, `groups`, `compact`, or `snowflake`. Optional `flows: [{from, to}]` uses explicit application data direction instead of foreign-key dependencies. Node IDs are qualified table names or `storage:<unit-id>`.
+- `write_layout`: partial `positions: {nodeId: {x, y}}` or `group_positions: {groupName: {x, y}}`. Group coordinates specify the group's outer top-left and translate its members together. Arrange unsaved members first. `replace: true` replaces the entire saved position map, useful for restoring a returned `previous_layout`; it cannot be combined with group moves.
+- Both tools accept `dry_run: true` for a preview and return bounds and `previous_layout`. Previewing does not save.
+
+Example request: “Arrange this diagram left to right following ingestion → document processing → publication → vector search. Read the current revisions, preview with explicit flow links, then save the layout. Preserve all DBML.” The agent must infer the intended application flow from your description; foreign keys alone do not describe it reliably. Refresh the agent's MCP connection to discover the new tools.

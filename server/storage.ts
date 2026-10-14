@@ -21,6 +21,8 @@ import {
 import { example, exampleLayout } from "./example.js";
 
 export type Layout = Record<string, { x: number; y: number }>;
+export const layoutRevision = (layout: Layout) => createHash("sha256").update(JSON.stringify(Object.fromEntries(Object.keys(layout).sort().map(id => [id, { x: layout[id].x, y: layout[id].y }])))).digest("hex");
+export type LayoutExpectation = { revision?: string; layout_revision: string };
 export const revision = (dbml: string) =>
   createHash("sha256").update(dbml).digest("hex");
 export class SchemaStore {
@@ -109,6 +111,7 @@ export class SchemaStore {
       dbml,
       revision: revision(dbml),
       layout,
+      layout_revision: layoutRevision(layout),
     };
   }
   async write(
@@ -166,7 +169,15 @@ export class SchemaStore {
       return this.read(id);
     });
   }
-  async saveLayout(id: string, layout: Layout) {
+  readLayout(id: string) {
+    if (!existsSync(this.path(id))) throw new SchemaError("Schema not found.", 404);
+    const path = this.path(id, ".layout.json");
+    let layout: Layout;
+    try { layout = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {}; }
+    catch { throw new SchemaError("Layout file is invalid JSON.", 500); }
+    return { layout, layout_revision: layoutRevision(layout) };
+  }
+  async saveLayout(id: string, layout: Layout, expected?: LayoutExpectation) {
     if (
       !layout ||
       typeof layout !== "object" ||
@@ -181,7 +192,9 @@ export class SchemaStore {
         "Layout must map table IDs to finite x/y coordinates.",
       );
     return this.lock(id, () => {
-      this.read(id);
+      const current = this.read(id);
+      if (expected && (current.layout_revision !== expected.layout_revision || (expected.revision && current.revision !== expected.revision)))
+        throw new SchemaError("Diagram or layout changed. Read the latest schema and layout revisions before positioning nodes.", 409);
       this.atomic(
         this.path(id, ".layout.json"),
         JSON.stringify(layout, null, 2),

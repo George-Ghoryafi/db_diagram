@@ -76,8 +76,9 @@ export function createApp(store = new SchemaStore()) {
       await store.write(req.params.id, req.body.dbml, req.body.revision),
     );
   });
+  app.get("/api/schemas/:id/layout", (req,res) => res.json(store.readLayout(req.params.id)));
   app.put("/api/schemas/:id/layout", async (req, res) => {
-    res.json(await store.saveLayout(req.params.id, req.body?.layout));
+    res.json(await store.saveLayout(req.params.id, req.body?.layout, typeof req.body?.layout_revision === "string" ? { layout_revision: req.body.layout_revision, revision: req.body.revision } : undefined));
   });
   app.post("/api/parse", (req, res) => {
     res.json(parseSchema(req.body?.dbml));

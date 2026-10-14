@@ -138,6 +138,7 @@ type Doc = {
   dbml: string;
   revision: string;
   layout: Record<string, { x: number; y: number }>;
+  layout_revision?: string;
   storage?: "browser" | "cloud";
   bundle_id?: string;
 };
@@ -195,7 +196,7 @@ function TableNode({ id, data, selected }: NodeProps) {
   return <div className={"table-node "+(selected?"selected":"")}>
     <div className="table-title" style={{background:t.color || "#316896"}}>
       <b>{t.schema==="public"?"":t.schema+"."}{t.name}</b>
-      {t.note&&<SchemaTooltip heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><p>{t.note}</p></>}><span className="note-indicator" aria-label={"Note on "+t.name}><MessageSquare size={13}/></span></SchemaTooltip>}
+      {t.note&&<SchemaTooltip disabled={!!data.disableHover} heading={<><Table2 size={14}/><b>{t.name}</b><span>Table</span></>} content={<><strong>Note</strong><p>{t.note}</p></>}><span className="note-indicator" aria-label={"Note on "+t.name}><MessageSquare size={13}/></span></SchemaTooltip>}
       {selected && <div className="table-access-icons nodrag nopan">
         <button type="button" aria-label="Table records" title="Table records" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); (data.openRecords as () => void)(); }}><Grid2X2 size={14}/></button>
         <AppearanceSettings label="Table header color" color={t.color || '#316896'} onApply={data.applyColor as (color: string) => Promise<void>} />
@@ -205,7 +206,7 @@ function TableNode({ id, data, selected }: NodeProps) {
     {visibleFields(t.fields,(data.detail as Detail)||"all",(data.keys as string[])||[]).map(f=>{
       const pk=primaryKeys.has(f.name),targets=foreignKeys[f.name] || [];
       const info=<><div className="attribute-constraints">{pk&&<span>Primary key</span>}{targets.length>0&&<span>Foreign key</span>}{f.not_null?<span>Not null</span>:!pk&&<span>Nullable</span>}{f.unique&&!pk&&<span>Unique</span>}</div>{targets.length>0&&<><strong>References</strong>{targets.map(target=><code key={target}>{target}</code>)}</>}{!!f.indexes?.length&&<div className="attribute-indexes"><strong>Indexes</strong>{f.indexes.map((index,i)=><div className="attribute-index" key={i}><div><ListFilter size={13}/><b>{index.name || (index.pk ? "Primary key index" : index.unique ? "Unique index" : "Index")}</b></div><small>{[index.pk ? "Primary key" : index.unique ? "Unique" : "Non-unique", index.type, index.columns.length>1 ? "Composite" : ""].filter(Boolean).join(" · ")}</small><code>{index.columns.map(column=>column.value).join(", ")}</code></div>)}</div>}{f.note&&<><strong>Note</strong><p>{f.note}</p></>}{!!f.checks?.length&&<div className="attribute-checks"><strong>Check constraints <span>{f.checks.length}</span></strong>{f.checks.map((rule,index)=><div className="check-rule" key={index}><div className="check-rule-summary"><ShieldCheck size={14}/><b>{rule.summary}</b></div>{rule.options&&<div className="check-values">{rule.options.map(value=><code key={value}>{value}</code>)}</div>}{rule.limits&&<div className="check-limits">{rule.limits.map(limit=><div key={limit.label}><span>{limit.label}</span><b>≤ {limit.maximum}</b></div>)}</div>}{rule.fields.length>1&&<small>Also applies to {rule.fields.filter(field=>field!==f.name).join(", ")}</small>}{rule.name&&<small className="check-rule-name">{rule.name}</small>}<pre className="check-expression">{rule.expression}</pre></div>)}{!f.not_null&&!pk&&<p className="check-null-hint">Nullable column; NULL handling depends on the expression.</p>}</div>}</>;
-      return <SchemaTooltip key={f.name} heading={<><Table2 size={14}/><b>{f.name}</b><code>{f.type}</code></>} content={info}>
+      return <SchemaTooltip disabled={!!data.disableHover} key={f.name} heading={<><Table2 size={14}/><b>{f.name}</b><code>{f.type}</code></>} content={info}>
         <div onPointerEnter={() => (data.onFieldHover as (field: string | null) => void)(f.name)} onPointerLeave={() => (data.onFieldHover as (field: string | null) => void)(null)} className={"field "+(pk?"primary-field ":"")+(((data.highlightFields as string[])||[]).includes(f.name)?"field-highlight":"")}>
           <Handle type="target" position={Position.Left} id={f.name+"-in"}/>
           <span className="field-name">{f.name}</span>
@@ -219,7 +220,7 @@ function TableNode({ id, data, selected }: NodeProps) {
         </div>
       </SchemaTooltip>;
     })}
-    {data.detail!=="names"&&tuples.map(tuple=><SchemaTooltip key={tuple.id} heading={<><Link2 size={14}/><b>Composite relationship</b><span>{tuple.fields.length} columns</span></>} content={<div className="composite-mappings"><p>These columns form one key. Cardinality applies to the complete tuple.</p>{tuple.references.map(ref=><div key={ref.id}><strong>{ref.name || 'Composite foreign key'}</strong>{ref.fromFields.map((field,index)=><div className="composite-pair" key={index}><code>{ref.fromTable}.{field}</code><ArrowUpRight size={12}/><code>{ref.toTable}.{ref.toFields[index]}</code></div>)}</div>)}</div>}>
+    {data.detail!=="names"&&tuples.map(tuple=><SchemaTooltip disabled={!!data.disableHover} key={tuple.id} heading={<><Link2 size={14}/><b>Composite relationship</b><span>{tuple.fields.length} columns</span></>} content={<div className="composite-mappings"><p>These columns form one key. Cardinality applies to the complete tuple.</p>{tuple.references.map(ref=><div key={ref.id}><strong>{ref.name || 'Composite foreign key'}</strong>{ref.fromFields.map((field,index)=><div className="composite-pair" key={index}><code>{ref.fromTable}.{field}</code><ArrowUpRight size={12}/><code>{ref.toTable}.{ref.toFields[index]}</code></div>)}</div>)}</div>}>
       <div className={'field composite-field ' + (tuple.fields.some(field=>((data.highlightFields as string[])||[]).includes(field))?'field-highlight':'')} onPointerEnter={()=>(data.onFieldHover as (field:string|null)=>void)(tuple.id)} onPointerLeave={()=>(data.onFieldHover as (field:string|null)=>void)(null)}>
         <Handle type="target" position={Position.Left} id={tuple.id+'-in'} isConnectable={false}/><Handle type="source" position={Position.Right} id={tuple.id+'-out'} isConnectable={false}/><Handle type="source" position={Position.Left} id={tuple.id+'-out-left'} isConnectable={false}/><Handle type="target" position={Position.Right} id={tuple.id+'-in-right'} isConnectable={false}/>
         <span className="composite-label" aria-label={'Composite key '+tuple.fields.join(', ')}>({tuple.fields.join(', ')})</span><Link2 size={11} className="composite-icon"/>
@@ -250,12 +251,15 @@ function GroupNode({ data }: NodeProps) {
 }
 const nodeTypes = {
   storage: memo(StorageNode),
-  table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && a.data.composites === b.data.composites && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
+  table: memo(TableNode, (a, b) => a.id === b.id && a.selected === b.selected && (a.data === b.data || (a.data.table === b.data.table && a.data.detail === b.data.detail && a.data.disableHover === b.data.disableHover && a.data.composites === b.data.composites && JSON.stringify(a.data.keys) === JSON.stringify(b.data.keys) && JSON.stringify(a.data.highlightFields) === JSON.stringify(b.data.highlightFields)))),
   group: memo(GroupNode, (a, b) => a.data.name === b.data.name && a.data.color === b.data.color && a.data.focused === b.data.focused),
 };
 function ZoomPercentage() { return <>{Math.round(useViewport().zoom * 100)}%</>; }
 function RelationshipEdge(props: EdgeProps) {
   const [hovered, setHovered] = useState(false);
+  const disableHover = !!props.data?.disableHover;
+  useEffect(() => { if (disableHover) setHovered(false); }, [disableHover]);
+  const hoverActive = hovered && !disableHover;
   const ports = props.data?.ports as { source: RelationshipPort; target: RelationshipPort };
   const sourceY = props.sourceY + (ports?.source.offset || 0);
   const targetY = props.targetY + (ports?.target.offset || 0);
@@ -275,10 +279,10 @@ function RelationshipEdge(props: EdgeProps) {
   }, [props.sourceX, sourceY, props.targetX, targetY, props.data?.dragging, props.data?.route, props.data?.routeBounds, props.data?.accessPoint, props.data?.explicitSelected, props.data?.branchLabel]);
   const storageLink = !!props.data?.storageLink;
   const parts = String(props.data?.relation || "").split(":");
-  const highlighted = hovered || props.selected || !!props.data?.highlighted;
+  const highlighted = hoverActive || props.selected || !!props.data?.highlighted;
   const stroke = String(props.data?.color || (highlighted ? "#475aff" : props.style?.stroke || "#9b9ca4"));
   return (
-    <g className={hovered ? "edge-hovered" : undefined} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>
+    <g className={hoverActive ? "edge-hovered" : undefined} onPointerEnter={() => { if (!disableHover) setHovered(true); }} onPointerLeave={() => setHovered(false)}>
       <BaseEdge
         id={props.id}
         className={`relationship-line flow-${direction}`}
@@ -413,7 +417,13 @@ function Workspace() {
   }, [doc?.name, activeBundle, bundles, loading]);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const canvasRef = useRef<HTMLElement>(null);
+  const canvasDragging = nodes.some(node => node.dragging);
+  useEffect(() => { if (canvasDragging) setHoveredField(null); }, [canvasDragging]);
   const nodesInitialized = nodes.length > 0 && nodes.every(node => !!node.measured?.width && !!node.measured?.height);
+  const latestDoc = useRef(doc); latestDoc.current = doc;
+  const layoutDirty = useRef(false), layoutBusy = useRef(false), layoutSaveRun = useRef(0), layoutExpected = useRef<string | undefined>(undefined);
+  const layoutSaves = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => { layoutDirty.current = false; clearTimeout(layoutTimer.current); }, [doc?.id]);
   const saved = useRef(""),
     latestCode = useRef(""),
     saving = useRef(false),
@@ -492,6 +502,8 @@ function Workspace() {
       return;
     }
     const run = ++loadRun.current;
+    layoutDirty.current = false;
+    clearTimeout(layoutTimer.current);
     ++parseSeq.current;
     setLoading(true);
     setStatus("Loading diagram…");
@@ -506,10 +518,8 @@ function Workspace() {
       saved.current = d.dbml;
       latestCode.current = d.dbml;
       fitPending.current = true;
-      if (doc?.id !== d.id) {
-        setModel({ notes: [], tables: [], refs: [], groups: [] });
-        setNodes([]);
-      }
+      setModel({ notes: [], tables: [], refs: [], groups: [] });
+      setNodes([]);
       selectionReady.current = true;
       setDoc(d);
       setActiveBundle(d.bundle_id || defaultBundle.id);
@@ -819,6 +829,17 @@ function Workspace() {
             );
           }
         }
+        const before = latestDoc.current;
+        if (before?.layout_revision && !dirty.current && !layoutDirty.current && !layoutBusy.current && !flow.getNodes().some(node=>node.dragging)) {
+          const state = await api("/schemas/" + doc.id + "/layout");
+          if (!active || layoutDirty.current || layoutBusy.current || dirty.current || latestDoc.current?.layout_revision !== before.layout_revision || flow.getNodes().some(node=>node.dragging)) return;
+          if (state.layout_revision !== before.layout_revision) {
+            setNodes(nodes=>nodes.map(node=>state.layout[node.id]?{...node,position:state.layout[node.id]}:node));
+            setDoc(previous=>previous?.id===doc.id?{...previous,layout:state.layout,layout_revision:state.layout_revision}:previous);
+            setStatus("Canvas updated by agent or another session");
+            requestAnimationFrame(()=>requestAnimationFrame(()=>void fitDiagram({duration:400})));
+          }
+        }
       } catch (e) {
         if (active) setError((e as Error).message);
       } finally { running = false; }
@@ -827,14 +848,24 @@ function Workspace() {
   }, [doc?.id, doc?.revision, doc?.name, doc?.bundle_id, doc?.storage]);
   const persistLayout = () => {
     if (!doc) return;
+    if (!layoutDirty.current) layoutExpected.current = latestDoc.current?.layout_revision;
+    layoutDirty.current = true;
+    const run = ++layoutSaveRun.current, generation = loadRun.current;
     clearTimeout(layoutTimer.current);
     const layout = {...doc.layout,...Object.fromEntries(
       flow.getNodes().filter(n => n.type === "table" || n.type === "storage").map(n => [n.id, n.position]),
     )};
     layoutTimer.current = setTimeout(() => {
-      api("/schemas/" + doc.id + "/layout", { layout }, "PUT").catch((e) =>
-        setError(e.message),
-      );
+      layoutSaves.current = layoutSaves.current.then(async()=>{
+        const current = latestDoc.current;
+        if (current?.id !== doc.id || generation !== loadRun.current) return;
+        const saved = await api("/schemas/" + doc.id + "/layout", { layout, layout_revision:layoutExpected.current, revision:doc.revision }, "PUT");
+        if (latestDoc.current?.id !== doc.id || generation !== loadRun.current) return;
+        layoutExpected.current = saved.layout_revision;
+        if (run === layoutSaveRun.current) layoutDirty.current = false;
+        latestDoc.current = {...current,layout:saved.layout,layout_revision:saved.layout_revision};
+        setDoc(previous=>previous?.id===doc.id?{...previous,layout:saved.layout,layout_revision:saved.layout_revision}:previous);
+      }).catch(e=>{ if(latestDoc.current?.id===doc.id && generation === loadRun.current) setError(e.message); });
     }, 400);
   };
   const create = async (dbml?: string, filename?: string) => {
@@ -941,6 +972,7 @@ function Workspace() {
     const originalCode = latestCode.current;
     const originalId = doc?.id;
     const current = () => run === layoutRun.current && originalCode === latestCode.current && originalId === layoutContext.current.id && detail === layoutContext.current.detail;
+    layoutBusy.current = true;
     setArranging(true);
     setError("");
     try {
@@ -971,7 +1003,7 @@ function Workspace() {
     } catch (e) {
       if (current()) setError("Could not arrange tables: " + (e as Error).message);
     } finally {
-      if (run === layoutRun.current) setArranging(false);
+      if (run === layoutRun.current) { layoutBusy.current = false; setArranging(false); }
     }
   };
   const openNote = () => {
@@ -987,8 +1019,8 @@ function Workspace() {
     highlight,
     selected,
     selectedEdge,
-    hoveredField,
-  ), [model.refs, highlight, selected, selectedEdge, hoveredField]);
+    canvasDragging ? null : hoveredField,
+  ), [canvasDragging, model.refs, highlight, selected, selectedEdge, hoveredField]);
   const compositeRows = useMemo(() => new Map(model.tables.map(table => [table.id, compositeEndpoints(model.refs, table.id)])), [model.tables, model.refs]);
   const tableData = useMemo(() => new Map(nodes.filter(n => n.type === "table").map((n) => {
     const t = n.data.table as Table;
@@ -1012,11 +1044,12 @@ function Workspace() {
     return [n.id, {
         ...n.data,
         table: t,
+        disableHover: canvasDragging,
         detail,
         keys,
         foreignKeys:foreignKeyTargets(model.refs,t.id),
         composites: compositeRows.get(t.id),
-        onFieldHover: (field: string | null) => setHoveredField(current => field ? { tableId: t.id, field } : current?.tableId === t.id ? null : current),
+        onFieldHover: (field: string | null) => !canvasDragging && setHoveredField(current => field ? { tableId: t.id, field } : current?.tableId === t.id ? null : current),
         openRecords: () => { setTableId(t.id); setRecordFocus(undefined); setRecordHistory([]); setModal('records'); },
         applyColor: (color: string) => applyVisualColor('table', t.id, color),
         highlightFields: model.refs
@@ -1026,11 +1059,11 @@ function Workspace() {
             ...(r.toTable === t.id ? r.toFields : []),
           ]),
     }] as const;
-  })), [model, detail, highlightedRefs, compositeRows]);
+  })), [model, detail, highlightedRefs, compositeRows, canvasDragging]);
   const storageData = useMemo(() => new Map(storage.units.map(unit => [storageNodeId(unit.id), {
-    unit, detail, onEdit: () => openStore(unit), onRecords: (item?: string) => openStorageRecords(unit, item),
-    onPortHover: (port: string | null) => setHoveredField(current => port ? { tableId: storageNodeId(unit.id), field: port } : current?.tableId === storageNodeId(unit.id) ? null : current),
-  }])), [storage.units, detail]);
+    unit, detail, disableHover: canvasDragging, onEdit: () => openStore(unit), onRecords: (item?: string) => openStorageRecords(unit, item),
+    onPortHover: (port: string | null) => !canvasDragging && setHoveredField(current => port ? { tableId: storageNodeId(unit.id), field: port } : current?.tableId === storageNodeId(unit.id) ? null : current),
+  }])), [storage.units, detail, canvasDragging]);
   const displayedNodes = useMemo<Node[]>(() => nodes.map(n => ({ ...n, selected: n.id === selected, zIndex: 2, data: tableData.get(n.id) || storageData.get(n.id) || n.data })), [nodes, selected, tableData, storageData]);
   const groupNodes: Node[] = useMemo(() => model.groups.flatMap((g) => {
     const members = nodes.filter((n) => g.tables.includes(n.id));
@@ -1130,6 +1163,7 @@ function Workspace() {
       interactionWidth: 10,
       data: {
         storageLink: r.storageLink,
+        disableHover: canvasDragging,
         onEdit: () => openStorageLink(r.storageLink),
         ports: ports[r.id],
         route: routing.sides?.[r.id] === `${attachments[r.id].sourceSide}:${attachments[r.id].targetSide}` ? relationshipRoutes[r.id] : undefined,
@@ -1155,7 +1189,7 @@ function Workspace() {
         strokeDasharray: r.storageLink ? "5 5" : undefined,
       },
     };
-  }), [canvasRefs, highlight, ports, relationshipRoutes, routing.labels, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables]);
+  }), [canvasRefs, highlight, ports, relationshipRoutes, routing.labels, routing.tables, routing.sides, attachmentKey, selectedEdge, highlightedRefs, selected, hoveredField, edgeAccessPoint, movingTables, canvasDragging]);
   const applyVisualColor = async (kind: 'table' | 'relationship' | 'group', id: string, color: string) => {
     const previous = latestCode.current;
     const next = await setVisualColor(previous, kind, id, color);
@@ -1482,7 +1516,7 @@ function Workspace() {
         )}
         <section
           ref={canvasRef}
-          className={"canvas " + (panMode ? "pan-mode" : "")}
+          className={"canvas " + (panMode ? "pan-mode " : "") + (canvasDragging ? "is-dragging" : "")}
         >
           {loading && <div className="canvas-loading" role="status" aria-live="polite">
             <DiagramSkeleton /><div className="loading-caption"><strong>Loading your diagram</strong><span>Getting your schema and saved layout ready…</span></div>

@@ -32,7 +32,7 @@ test("hosted API and remote MCP publicly share the same schema store", async () 
         requestInit: { headers },
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 9);
+    assert.equal((await client.listTools()).tools.length, 11);
     const dbml = "Table remote_test { id integer [pk] }";
     assert.ok(
       !(
@@ -48,6 +48,15 @@ test("hosted API and remote MCP publicly share the same schema store", async () 
     });
     const document = JSON.parse((read.content as { text: string }[])[0].text);
     assert.equal(document.dbml, dbml);
+    const arranged = await client.callTool({name:'arrange_diagram',arguments:{id:'remote-test',revision:document.revision,layout_revision:document.layout_revision,mode:'compact'}});
+    assert.ok(!arranged.isError,JSON.stringify(arranged));
+    const layoutState = await (await fetch(url+'/api/schemas/remote-test/layout')).json();
+    assert.ok(layoutState.layout['public.remote_test']);
+    assert.ok(layoutState.layout_revision);
+    assert.equal(layoutState.dbml,undefined);
+    assert.equal((await fetch(url+"/api/schemas/remote-test/layout",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({layout:{},layout_revision:document.layout_revision,revision:document.revision})})).status,409);
+    assert.deepEqual(store.read("remote-test").layout,layoutState.layout);
+
     assert.equal(
       (
         await (

@@ -1,4 +1,4 @@
-import { isMany } from './cardinality';
+import { isMany } from './cardinality.js';
 import type { ElkNode, LayoutOptions } from "elkjs/lib/elk-api";
 export type Arrangement = "left-right" | "pipeline" | "snowflake" | "compact" | "groups";
 type Item = { id: string; width: number; height: number; fields?: { name: string; y: number }[] };

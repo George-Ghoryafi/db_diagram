@@ -1749,7 +1749,7 @@ button:disabled {
 .storage-item-row code { color: #8b96a0; margin-left: auto; font-size: 10px; white-space: nowrap; }
 .storage-access { display: flex; align-items: center; gap: 3px; margin-left: auto; color: #7b8b95; font-size: 9px; flex-shrink: 0; }
 .storage-field-row { position: relative; display: flex; align-items: center; height: 24px; padding-right: 13px; gap: 10px; font-size: 11px; }
-.storage-field-row:hover, .storage-item-row:hover { background: #e7f1f2; }
+.canvas:not(.is-dragging) .storage-field-row:hover, .canvas:not(.is-dragging) .storage-item-row:hover { background: #e7f1f2; }
 .storage-field-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .storage-field-row code { margin-left: auto; font-size: 10px; color: #81919b; flex-shrink: 0; }
 .storage-node-footer { height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 13px; color: #91a0aa; font-size: 10px; border-top: 1px solid #e5ecee; }

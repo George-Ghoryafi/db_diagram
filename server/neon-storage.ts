@@ -8,7 +8,7 @@ import {
   type DiagramMetadata,
 } from "../src/bundles.js";
 import { randomUUID } from "node:crypto";
-import type { Layout } from "./storage.js";
+import { layoutRevision, type LayoutExpectation, type Layout } from "./storage.js";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 function validateId(id: string) {
@@ -21,6 +21,7 @@ type Document = {
   dbml: string;
   revision: string;
   layout: Layout;
+  layout_revision: string;
   storage: "cloud";
   bundle_id: string;
 };
@@ -41,6 +42,7 @@ export class NeonSchemaStore {
       dbml: row.dbml,
       revision: row.revision,
       layout: row.layout,
+      layout_revision: layoutRevision(row.layout),
       storage: "cloud",
     };
   }
@@ -140,7 +142,13 @@ export class NeonSchemaStore {
     if (!rows.length) throw new SchemaError("Schema not found.", 404);
     return this.document(rows[0]);
   }
-  async saveLayout(id: string, layout: Layout) {
+  async readLayout(id: string) {
+    validateId(id);
+    const rows = await this.sql`SELECT layout, revision FROM diagram_documents WHERE id=${id}`;
+    if (!rows.length) throw new SchemaError("Schema not found.", 404);
+    return { layout: rows[0].layout as Layout, layout_revision: layoutRevision(rows[0].layout), revision: rows[0].revision as string };
+  }
+  async saveLayout(id: string, layout: Layout, expected?: LayoutExpectation) {
     validateId(id);
     if (
       !layout ||
@@ -154,9 +162,12 @@ export class NeonSchemaStore {
       throw new SchemaError(
         "Layout must map table IDs to finite x/y coordinates.",
       );
-    const rows = await this
+    const current = expected ? await this.readLayout(id) : undefined;
+    if (expected && (current!.layout_revision !== expected.layout_revision || (expected.revision && current!.revision !== expected.revision)))
+      throw new SchemaError("Diagram or layout changed. Read the latest schema and layout revisions before positioning nodes.", 409);
+    const rows = expected ? await this.sql`UPDATE diagram_documents SET layout=${JSON.stringify(layout)}::jsonb,updated_at=now() WHERE id=${id} AND layout=${JSON.stringify(current!.layout)}::jsonb AND revision=${current!.revision} RETURNING id,name,bundle_id,dbml,revision,layout` : await this
       .sql`UPDATE diagram_documents SET layout=${JSON.stringify(layout)}::jsonb,updated_at=now() WHERE id=${id} RETURNING id,name,bundle_id,dbml,revision,layout`;
-    if (!rows.length) throw new SchemaError("Schema not found.", 404);
+    if (!rows.length) throw new SchemaError(expected ? "Diagram or layout changed. Read the latest revisions before positioning nodes." : "Schema not found.", expected ? 409 : 404);
     return this.document(rows[0]);
   }
 }

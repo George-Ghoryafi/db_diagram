@@ -2,7 +2,7 @@ import { defaultBundle, bundleDetails, type Bundle } from "./bundles";
 import { exampleDocument } from "./example";
 import { parseSchema, exportSchema, SchemaError } from "./schema";
 const storageKey = "dbdiagram.schemas.v1";
-type Doc = typeof exampleDocument & { bundle_id?: string };
+type Doc = typeof exampleDocument & { bundle_id?: string; layout_revision?: string };
 async function revision(text: string) {
   return [
     ...new Uint8Array(
@@ -12,6 +12,7 @@ async function revision(text: string) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+const layoutHash = (layout: Doc["layout"]) => revision(JSON.stringify(Object.fromEntries(Object.keys(layout).sort().map(id=>[id,{x:layout[id].x,y:layout[id].y}]))));
 function readAll(): Doc[] {
   const saved = localStorage.getItem(storageKey);
   if (!saved) return [];
@@ -107,8 +108,10 @@ export async function browserApi(path: string, body: any, method: string) {
   const id = match[1],
     d = docs.find((d) => d.id === id);
   if (!d) throw new SchemaError("Schema not found.");
-  if (method === "GET")
-    return { ...d, bundle_id: d.bundle_id || defaultBundle.id };
+  if (method === "GET") {
+    const layout_revision = await layoutHash(d.layout);
+    return match[2] === '/layout' ? {layout:d.layout,layout_revision} : { ...d, layout_revision, bundle_id: d.bundle_id || defaultBundle.id };
+  }
   if (method !== "PUT") throw new SchemaError("Method not supported.");
   if (match[2] === "/bundle") {
     if (!bundles().some((b) => b.id === body?.bundle_id))
@@ -125,7 +128,15 @@ export async function browserApi(path: string, body: any, method: string) {
       )
     )
       throw new SchemaError("Invalid layout.");
-    d.layout = layout;
+    const before = await layoutHash(d.layout);
+    const nextRevision = await layoutHash(layout);
+    docs = readAll();
+    const current = docs.find(doc=>doc.id===id);
+    if (!current || (body.layout_revision && (before!==body.layout_revision || JSON.stringify(current.layout)!==JSON.stringify(d.layout))) || (body.revision && current.revision!==body.revision)) throw new SchemaError('Diagram or layout changed. Reload before positioning nodes.',409);
+    current.layout = layout;
+    current.layout_revision = nextRevision;
+    persist(docs);
+    return current;
   } else {
     if (d.revision !== body?.revision)
       throw new SchemaError(

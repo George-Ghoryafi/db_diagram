@@ -24,7 +24,7 @@ export function StorageNode({ id, data, selected }: NodeProps) {
     </div>
     <div className="storage-node-kind">{kind.label}</div>
     {data.detail !== 'names' && unit.items.map(item => <div key={item.id}>
-      <SchemaTooltip heading={<><StorageIcon kind={unit.kind} /><b>{item.name}</b></>} content={<>
+      <SchemaTooltip disabled={!!data.disableHover} heading={<><StorageIcon kind={unit.kind} /><b>{item.name}</b></>} content={<>
         <strong>{kind.item}</strong>{item.note && <p>{item.note}</p>}
         {unit.kind === 'blob' && <p>{item.access === 'private' ? 'Private bucket' : 'Public bucket'}{item.contentType && ' · ' + item.contentType}</p>}
         {item.keyPattern && <><strong>Key pattern</strong><code>{item.keyPattern}</code></>}
@@ -42,7 +42,7 @@ export function StorageNode({ id, data, selected }: NodeProps) {
         <StorageHandles port={item.id + '/' + field.path} /><span title={field.path}>{field.name}</span><code>{field.type}</code>
       </div>)}
     </div>)}
-    <div className="storage-node-footer"><span>{unit.items.length} {unit.items.length === 1 ? kind.item.toLowerCase() : kind.plural}</span>{unit.note && <SchemaTooltip heading={<b>{unit.name}</b>} content={<p>{unit.note}</p>}><Info size={12} /></SchemaTooltip>}</div>
+    <div className="storage-node-footer"><span>{unit.items.length} {unit.items.length === 1 ? kind.item.toLowerCase() : kind.plural}</span>{unit.note && <SchemaTooltip disabled={!!data.disableHover} heading={<b>{unit.name}</b>} content={<p>{unit.note}</p>}><Info size={12} /></SchemaTooltip>}</div>
   </div>;
 }
 

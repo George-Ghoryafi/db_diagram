@@ -11,9 +11,7 @@ import {
 } from "./schema.js";
 import type { Layout } from "./storage.js";
 
-type HostedStore = McpSchemaStore & {
-  saveLayout(id: string, layout: Layout): Promise<unknown>;
-};
+type HostedStore = McpSchemaStore;
 export function createHostedApp(store: () => HostedStore) {
   const app = express();
   app.disable("x-powered-by");
@@ -27,7 +25,7 @@ export function createHostedApp(store: () => HostedStore) {
       configured: !!(
         process.env.DATABASE_URL || process.env.db_diagram_DATABASE_URL
       ),
-      version: "1.5.0",
+      version: "1.6.0",
     }),
   );
   app.use("/api", (req, res, next) => {
@@ -103,8 +101,9 @@ export function createHostedApp(store: () => HostedStore) {
       await store().write(req.params.id, req.body.dbml, req.body.revision),
     );
   });
+  app.get("/api/schemas/:id/layout", async (req,res) => res.json(await store().readLayout(req.params.id)));
   app.put("/api/schemas/:id/layout", async (req, res) =>
-    res.json(await store().saveLayout(req.params.id, req.body?.layout)),
+    res.json(await store().saveLayout(req.params.id, req.body?.layout, typeof req.body?.layout_revision === "string" ? { layout_revision: req.body.layout_revision, revision: req.body.revision } : undefined)),
   );
   app.post("/api/parse", (req, res) => res.json(parseSchema(req.body?.dbml)));
   app.post("/api/export", (req, res) =>
